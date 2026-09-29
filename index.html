@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>비어퐁 땅따먹기</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --panel: #ffffff;
+    --ink: #1d1d1f;
+    --muted: #6b6b70;
+    --line: #d9d7d0;
+    --cell: #ffffff;
+    --p0: #6a4cff;
+    --p0-soft: #e6e0ff;
+    --p1: #f08a00;
+    --p1-soft: #ffe8c7;
+    --up: #f3dc7a;
+    --left: #9fbfd6;
+    --right: #a9d4a0;
+    --down: #eaa3a3;
+    --danger: #d64545;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  }
+  header {
+    padding: 16px 20px 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 24px; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(300px, 560px) minmax(300px, 1fr);
+    gap: 20px;
+    padding: 8px 20px 24px;
+    max-width: 1200px;
+  }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; padding: 8px 16px 24px; }
+    header { padding: 16px 16px 8px; }
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  /* ---------- scoreboard ---------- */
+  .status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .round-pill {
+    background: var(--ink);
+    color: #fff;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 14px;
+  }
+  .players {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .pcard {
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .pcard.active { box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
+  .pcard.p0.active { border-color: var(--p0); }
+  .pcard.p1.active { border-color: var(--p1); }
+  .pcard .name { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex: none; }
+  .pcard .score { font-size: 26px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .pcard .detail { font-size: 12px; color: var(--muted); }
+
+  /* ---------- board ---------- */
+  .board-wrap { position: relative; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    background: var(--line);
+    padding: 4px;
+    border-radius: 10px;
+    aspect-ratio: 1 / 1;
+  }
+  .cell {
+    position: relative;
+    background: var(--cell);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: background .25s;
+  }
+  .cell.own0 { background: var(--p0-soft); }
+  .cell.own1 { background: var(--p1-soft); }
+  .cell .coord {
+    position: absolute; top: 3px; left: 5px;
+    font-size: 10px; color: var(--muted);
+  }
+  .cell .mark {
+    position: absolute; top: 2px; right: 4px;
+    font-size: 14px;
+  }
+  .cell .stack {
+    position: absolute; left: 5px; bottom: 5px;
+    display: flex; flex-direction: column-reverse; gap: 1px;
+  }
+  .cell .stack i {
+    display: block; width: 18px; height: 5px; border-radius: 2px;
+    border: 1px solid rgba(0,0,0,.25);
+  }
+  .cell .count {
+    position: absolute; right: 5px; bottom: 3px;
+    font-size: 12px; font-weight: 700; color: var(--ink);
+  }
+  .cell .pieces {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+  }
+  .piece {
+    width: 38%; aspect-ratio: 1/1; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: clamp(10px, 2.6vw, 15px);
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  }
+  .pieces.two .piece { width: 34%; }
+  .piece.moving { animation: pop .3s ease; }
+  @keyframes pop { 0% { transform: scale(.6); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  .cell .ghost {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .cell.path { outline: 2px dashed var(--ghost, #999); outline-offset: -4px; }
+  .cell .step-no {
+    position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; font-weight: 700;
+    background: var(--ghost, #999); color: #fff;
+    border-radius: 999px; padding: 0 6px; line-height: 16px;
+  }
+  .cell.blocked .step-no { opacity: .55; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  /* ---------- controls ---------- */
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  .turn-title { font-size: 18px; font-weight: 800; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(3, 56px);
+    gap: 6px;
+    justify-content: center;
+    margin: 6px 0 14px;
+  }
+  .dpad button {
+    font-size: 18px; font-weight: 800;
+    border: 1px solid rgba(0,0,0,.15); border-radius: 10px;
+    cursor: pointer; color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
+  }
+  .dpad button small { font-size: 12px; font-weight: 600; }
+  .dpad button:active { transform: translateY(1px); }
+  .dpad button:disabled { opacity: .4; cursor: not-allowed; }
+  .dpad .U { grid-column: 2; grid-row: 1; background: var(--up); }
+  .dpad .L { grid-column: 1; grid-row: 2; background: var(--left); }
+  .dpad .R { grid-column: 3; grid-row: 2; background: var(--right); }
+  .dpad .D { grid-column: 2; grid-row: 3; background: var(--down); }
+  .dpad .ball {
+    grid-column: 2; grid-row: 2;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--muted); text-align: center;
+  }
+
+  .queue-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .queue {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    min-height: 64px;
+    padding: 10px;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    align-items: flex-start;
+  }
+  .queue .empty { color: var(--muted); font-size: 13px; align-self: center; }
+  .chip {
+    display: flex; flex-direction: column; align-items: center;
+    border-radius: 10px; padding: 4px 6px 4px;
+    border: 1px solid rgba(0,0,0,.15);
+    min-width: 58px;
+    position: relative;
+  }
+  .chip .ord { font-size: 10px; color: rgba(0,0,0,.55); }
+  .chip .arrow { font-size: 20px; font-weight: 800; line-height: 1.1; }
+  .chip .lbl { font-size: 12px; font-weight: 700; }
+  .chip .tools { display: flex; gap: 2px; margin-top: 3px; }
+  .chip .tools button {
+    border: none; background: rgba(255,255,255,.7);
+    border-radius: 5px; width: 20px; height: 20px; padding: 0;
+    cursor: pointer; font-size: 11px;
+  }
+  .chip .tools button:disabled { opacity: .3; cursor: default; }
+  .chip.U { background: var(--up); }
+  .chip.L { background: var(--left); }
+  .chip.R { background: var(--right); }
+  .chip.D { background: var(--down); }
+  .chip.dead { opacity: .45; }
+  .chip.dead .arrow { text-decoration: line-through; }
+  .chip.dead::after {
+    content: "소멸"; position: absolute; top: -8px; right: -6px;
+    background: var(--danger); color: #fff; font-size: 10px; font-weight: 700;
+    padding: 1px 5px; border-radius: 999px;
+  }
+  .chip.unused { opacity: .45; }
+  .chip.unused::after {
+    content: "미사용"; position: absolute; top: -8px; right: -6px;
+    background: var(--muted); color: #fff; font-size: 10px; font-weight: 700;
+    padding: 1px 5px; border-radius: 999px;
+  }
+  .chip.current { box-shadow: 0 0 0 3px var(--ink); }
+
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    padding: 10px 14px; border-radius: 10px; font-weight: 700; font-size: 14px;
+    cursor: pointer;
+  }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); flex: 1; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .kbd-hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  kbd {
+    font-family: inherit; font-size: 11px;
+    border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 4px; background: #fff;
+  }
+
+  .log {
+    margin-top: 14px;
+    max-height: 220px; overflow: auto;
+    font-size: 13px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+  .log ol { margin: 0; padding-left: 0; list-style: none; }
+  .log li { margin-bottom: 3px; }
+  .log .vanish { color: var(--danger); }
+
+  details.rules { margin-top: 14px; font-size: 13px; }
+  details.rules summary { cursor: pointer; font-weight: 700; }
+  details.rules ul { padding-left: 18px; margin: 8px 0 0; }
+  details.rules li { margin-bottom: 4px; }
+
+  /* ---------- result overlay ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: none; align-items: center; justify-content: center; padding: 16px;
+    z-index: 10;
+  }
+  .overlay.show { display: flex; }
+  .result {
+    background: #fff; border-radius: 16px; padding: 24px; width: min(440px, 100%);
+    text-align: center;
+  }
+  .result h3 { font-size: 24px; margin: 0 0 6px; }
+  .result .why { color: var(--muted); margin-bottom: 16px; font-size: 14px; }
+  .result table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-variant-numeric: tabular-nums; }
+  .result th, .result td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .result td:first-child, .result th:first-child { text-align: left; }
+  .result td, .result th { text-align: right; }
+  .result tr.total td { font-weight: 800; font-size: 16px; border-bottom: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>비어퐁 땅따먹기</h1>
+  <span class="sub">비어퐁으로 얻은 화살표로 말을 움직여 (5,5)를 향해 가며 땅을 차지하세요</span>
+</header>
+
+<main>
+  <section class="card">
+    <div class="status">
+      <span id="turnLabel"></span>
+      <span class="round-pill" id="roundLabel"></span>
+    </div>
+    <div class="players" id="players"></div>
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+    </div>
+    <div class="legend">
+      <span>📍 출발 (1,1)</span>
+      <span>🚩 도착 (5,5)</span>
+      <span>칸 왼쪽 아래 막대 = 쌓인 토큰 (위가 맨 위)</span>
+      <span>점선 = 이동 미리보기</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="turn-title" id="turnTitle"></div>
+    <p class="hint" id="turnHint">비어퐁에서 공이 들어간 컵의 방향을 입력하세요. 입력한 순서대로 이동하며, 칩의 ◀ ▶ 버튼으로 순서를 바꿀 수 있습니다.</p>
+
+    <div class="dpad" id="dpad">
+      <button class="U" data-dir="U">↑<small>상 · 노랑</small></button>
+      <button class="L" data-dir="L">←<small>좌 · 파랑</small></button>
+      <div class="ball" id="ballInfo"></div>
+      <button class="R" data-dir="R">→<small>우 · 초록</small></button>
+      <button class="D" data-dir="D">↓<small>하 · 빨강</small></button>
+    </div>
+
+    <div class="queue-head">
+      <h2>이동 순서</h2>
+      <span class="hint" id="queueCount" style="margin:0"></span>
+    </div>
+    <div class="queue" id="queue"></div>
+
+    <div class="actions">
+      <button class="btn" id="clearBtn">모두 지우기</button>
+      <button class="btn primary" id="goBtn">이동하기</button>
+    </div>
+    <div class="kbd-hint">
+      키보드: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 또는 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 입력 · <kbd>Backspace</kbd> 마지막 삭제 · <kbd>Enter</kbd> 이동
+    </div>
+
+    <div class="log">
+      <h2>진행 기록</h2>
+      <ol id="log"></ol>
+    </div>
+
+    <details class="rules">
+      <summary>게임 규칙 요약</summary>
+      <ul>
+        <li>2인 · 최대 8라운드 · 한 라운드는 선공과 후공이 한 번씩 진행</li>
+        <li>탁구공 5개를 던져 들어간 컵의 방향 화살표를 1개씩 얻음 (노랑↑ 파랑← 초록→ 빨강↓)</li>
+        <li>얻은 화살표의 순서를 자유롭게 정한 뒤 한 칸씩 이동. 이동 가능한 화살표는 반드시 사용하며, 판 밖으로 나가게 되는 화살표만 소멸</li>
+        <li>말이 들어간 칸마다 자신의 토큰을 1개 올림. 상대 토큰이 맨 위면 그 위에 쌓아 아래 토큰까지 모두 내 것이 됨. 내 토큰이 맨 위인 칸에는 쌓을 수 없음</li>
+        <li>두 말은 같은 칸에 함께 있을 수 있음</li>
+        <li>누구든 (5,5)에 먼저 도착하면 즉시 종료, 아니면 8라운드 후 종료</li>
+        <li>점수: 맨 위 토큰 주인이 그 칸의 토큰 전부 × 500점 + 먼저 도착 시 2,000점. 총점이 높은 쪽 승리</li>
+      </ul>
+    </details>
+
+    <div class="actions" style="margin-top:14px">
+      <button class="btn" id="resetBtn">새 게임</button>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="result">
+    <h3 id="resultTitle"></h3>
+    <div class="why" id="resultWhy"></div>
+    <table id="resultTable"></table>
+    <div class="actions">
+      <button class="btn" id="closeResult">판 보기</button>
+      <button class="btn primary" id="againBtn">다시 하기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SIZE = 5;
+  const ROUNDS = 8;
+  const BALLS = 5;
+  const TOKEN_POINTS = 500;
+  const ARRIVAL_BONUS = 2000;
+  const START = { x: 1, y: 1 };
+  const GOAL = { x: 5, y: 5 };
+  const STEP_MS = 420;
+
+  // (x, y): x = 가로(열), y = 세로(행). 하 → y+1, 우 → x+1
+  const DIRS = {
+    U: { dx: 0, dy: -1, arrow: '↑', label: '상' },
+    D: { dx: 0, dy: 1, arrow: '↓', label: '하' },
+    L: { dx: -1, dy: 0, arrow: '←', label: '좌' },
+    R: { dx: 1, dy: 0, arrow: '→', label: '우' },
+  };
+
+  const PLAYERS = [
+    { name: '플레이어 1', short: '1', color: 'var(--p0)' },
+    { name: '플레이어 2', short: '2', color: 'var(--p1)' },
+  ];
+
+  let state;
+
+  function newGame() {
+    state = {
+      round: 1,
+      turn: 0,
+      pos: [{ ...START }, { ...START }],
+      // board[y][x] = 아래→위 순서의 토큰 주인 배열
+      board: Array.from({ length: SIZE + 1 }, () => Array.from({ length: SIZE + 1 }, () => [])),
+      queue: [],
+      arrivedBy: null,
+      over: false,
+      endReason: '',
+      animating: false,
+      playback: null, // 이동 중 칩 상태 표시용
+      log: [],
+    };
+    hideResult();
+    render();
+  }
+
+  const inBoard = (x, y) => x >= 1 && x <= SIZE && y >= 1 && y <= SIZE;
+  const isGoal = (p) => p.x === GOAL.x && p.y === GOAL.y;
+  const fmt = (p) => `(${p.x},${p.y})`;
+
+  // 화살표 순서대로 이동 결과를 계산 (실제 상태는 바꾸지 않음)
+  function simulate(from, queue) {
+    let cur = { ...from };
+    const steps = [];
+    let reached = false;
+    for (const d of queue) {
+      if (reached) { steps.push({ dir: d, kind: 'unused' }); continue; }
+      const nx = cur.x + DIRS[d].dx, ny = cur.y + DIRS[d].dy;
+      if (!inBoard(nx, ny)) {
+        steps.push({ dir: d, kind: 'vanish', at: { ...cur } });
+        continue;
+      }
+      cur = { x: nx, y: ny };
+      steps.push({ dir: d, kind: 'move', to: { ...cur } });
+      if (isGoal(cur)) reached = true;
+    }
+    return { steps, end: cur, reached };
+  }
+
+  function topOf(x, y) {
+    const s = state.board[y][x];
+    return s.length ? s[s.length - 1] : null;
+  }
+
+  // 칸에 들어갔을 때 토큰 올리기. 결과 설명 문자열 반환
+  function placeToken(player, x, y) {
+    const stack = state.board[y][x];
+    const top = topOf(x, y);
+    if (top === player) return '내 토큰이 맨 위라 쌓지 않음';
+    stack.push(player);
+    if (top === null) return '토큰 1개 놓음';
+    return `상대 토큰 위에 쌓음 → 이 칸 토큰 ${stack.length}개 획득`;
+  }
+
+  function scores() {
+    const res = [0, 1].map(() => ({ tokens: 0, cells: 0, bonus: 0, total: 0 }));
+    for (let y = 1; y <= SIZE; y++) {
+      for (let x = 1; x <= SIZE; x++) {
+        const s = state.board[y][x];
+        if (!s.length) continue;
+        const owner = s[s.length - 1];
+        res[owner].tokens += s.length;
+        res[owner].cells += 1;
+      }
+    }
+    if (state.arrivedBy !== null) res[state.arrivedBy].bonus = ARRIVAL_BONUS;
+    res.forEach(r => { r.total = r.tokens * TOKEN_POINTS + r.bonus; });
+    return res;
+  }
+
+  // ---------------- input ----------------
+  function addArrow(d) {
+    if (state.over || state.animating) return;
+    if (state.queue.length >= BALLS) return;
+    state.queue.push(d);
+    render();
+  }
+  function removeAt(i) {
+    if (state.animating) return;
+    state.queue.splice(i, 1);
+    render();
+  }
+  function swap(i, j) {
+    if (state.animating) return;
+    if (j < 0 || j >= state.queue.length) return;
+    [state.queue[i], state.queue[j]] = [state.queue[j], state.queue[i]];
+    render();
+  }
+
+  function addLog(html) {
+    state.log.push(html);
+  }
+
+  // ---------------- turn execution ----------------
+  async function executeTurn() {
+    if (state.over || state.animating) return;
+    const me = state.turn;
+    const queue = state.queue.slice();
+    const plan = simulate(state.pos[me], queue);
+    state.animating = true;
+    state.playback = { steps: plan.steps, index: -1 };
+
+    const who = `<b style="color:${PLAYERS[me].color}">${PLAYERS[me].name}</b>`;
+    if (!queue.length) {
+      addLog(`${state.round}R ${who}: 화살표 없음 → 이동 없이 차례 종료`);
+    } else {
+      addLog(`${state.round}R ${who}: ${queue.map(d => DIRS[d].label).join('→')} 입력`);
+    }
+    render();
+
+    for (let i = 0; i < plan.steps.length; i++) {
+      const st = plan.steps[i];
+      if (st.kind === 'unused') break;
+      state.playback.index = i;
+      if (st.kind === 'vanish') {
+        addLog(`<span class="vanish">· ${DIRS[st.dir].label}: ${fmt(st.at)}에서 판 밖 → 소멸</span>`);
+      } else {
+        state.pos[me] = { ...st.to };
+        const msg = placeToken(me, st.to.x, st.to.y);
+        addLog(`· ${DIRS[st.dir].label}: ${fmt(st.to)} 이동, ${msg}`);
+        state.justMoved = me;
+      }
+      render();
+      await sleep(STEP_MS);
+      state.justMoved = null;
+      if (st.kind === 'move' && isGoal(st.to)) {
+        state.arrivedBy = me;
+        state.over = true;
+        state.endReason = `${PLAYERS[me].name}이(가) (5,5)에 먼저 도착해 게임이 즉시 끝났습니다.`;
+        addLog(`🚩 ${who} (5,5) 도착! 도착 보너스 +${ARRIVAL_BONUS.toLocaleString()}점`);
+        break;
+      }
+    }
+
+    state.queue = [];
+    state.playback = null;
+    state.animating = false;
+
+    if (!state.over) {
+      if (state.turn === 0) {
+        state.turn = 1;
+      } else {
+        state.turn = 0;
+        state.round += 1;
+        if (state.round > ROUNDS) {
+          state.round = ROUNDS;
+          state.over = true;
+          state.endReason = `${ROUNDS}라운드가 끝날 때까지 아무도 (5,5)에 도착하지 못했습니다.`;
+        }
+      }
+    }
+    render();
+    if (state.over) showResult();
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // ---------------- rendering ----------------
+  const $ = (id) => document.getElementById(id);
+
+  function render() {
+    renderStatus();
+    renderPlayers();
+    renderBoard();
+    renderControls();
+    renderLog();
+  }
+
+  function renderStatus() {
+    $('roundLabel').textContent = `라운드 ${state.round} / ${ROUNDS}`;
+    $('turnLabel').textContent = state.over ? '게임 종료' : (state.turn === 0 ? '선공 차례' : '후공 차례');
+  }
+
+  function renderPlayers() {
+    const sc = scores();
+    $('players').innerHTML = [0, 1].map(i => `
+      <div class="pcard p${i} ${!state.over && state.turn === i ? 'active' : ''}">
+        <div class="name"><span class="dot" style="background:${PLAYERS[i].color}"></span>${PLAYERS[i].name}${i === 0 ? ' (선공)' : ' (후공)'}</div>
+        <div class="score">${sc[i].total.toLocaleString()}점</div>
+        <div class="detail">위치 ${fmt(state.pos[i])} · 토큰 ${sc[i].tokens}개 (${sc[i].cells}칸)${sc[i].bonus ? ' · 도착 +2,000' : ''}</div>
+      </div>`).join('');
+  }
+
+  function renderBoard() {
+    // 미리보기 경로
+    const preview = new Map();
+    if (!state.over && !state.animating && state.queue.length) {
+      const plan = simulate(state.pos[state.turn], state.queue);
+      let n = 0;
+      plan.steps.forEach(st => {
+        if (st.kind !== 'move') return;
+        n++;
+        const key = `${st.to.x},${st.to.y}`;
+        const blocked = topOf(st.to.x, st.to.y) === state.turn && !preview.has(key);
+        const prev = preview.get(key);
+        preview.set(key, { nums: prev ? [...prev.nums, n] : [n], blocked: prev ? prev.blocked : blocked });
+      });
+    }
+
+    let html = '';
+    for (let y = 1; y <= SIZE; y++) {
+      for (let x = 1; x <= SIZE; x++) {
+        const s = state.board[y][x];
+        const top = s.length ? s[s.length - 1] : null;
+        const cls = ['cell'];
+        if (top !== null) cls.push('own' + top);
+        const pv = preview.get(`${x},${y}`);
+        if (pv) cls.push('path');
+        if (pv && pv.blocked) cls.push('blocked');
+
+        const here = [0, 1].filter(i => state.pos[i].x === x && state.pos[i].y === y);
+        const mark = (x === START.x && y === START.y) ? '📍' : (x === GOAL.x && y === GOAL.y) ? '🚩' : '';
+        const stackHtml = s.slice(-8).map(o => `<i style="background:${PLAYERS[o].color}"></i>`).join('');
+
+        html += `<div class="${cls.join(' ')}" style="--ghost:${PLAYERS[state.turn].color}" title="${fmt({ x, y })}${s.length ? ` · 토큰 ${s.length}개, 맨 위 ${PLAYERS[top].name}` : ''}">
+          <span class="coord">${x},${y}</span>
+          ${mark ? `<span class="mark">${mark}</span>` : ''}
+          ${pv ? `<span class="step-no">${pv.nums.join('·')}</span>` : ''}
+          <div class="stack">${stackHtml}</div>
+          ${s.length ? `<span class="count">×${s.length}</span>` : ''}
+          <div class="pieces ${here.length === 2 ? 'two' : ''}">
+            ${here.map(i => `<div class="piece ${state.justMoved === i ? 'moving' : ''}" style="background:${PLAYERS[i].color}">${PLAYERS[i].short}</div>`).join('')}
+          </div>
+        </div>`;
+      }
+    }
+    $('board').innerHTML = html;
+  }
+
+  function renderControls() {
+    const me = state.turn;
+    const busy = state.animating;
+    const title = $('turnTitle');
+    if (state.over) {
+      title.innerHTML = '게임이 끝났습니다';
+      $('turnHint').textContent = state.endReason;
+    } else {
+      title.innerHTML = `<span class="dot" style="background:${PLAYERS[me].color}"></span>${PLAYERS[me].name}의 차례 <span style="color:var(--muted);font-weight:600;font-size:14px">· 현재 위치 ${fmt(state.pos[me])}</span>`;
+      $('turnHint').textContent = busy
+        ? '이동 중…'
+        : '비어퐁에서 공이 들어간 컵의 방향을 입력하세요. 입력한 순서대로 이동하며, 칩의 ◀ ▶ 버튼으로 순서를 바꿀 수 있습니다.';
+    }
+
+    const full = state.queue.length >= BALLS;
+    document.querySelectorAll('#dpad button').forEach(b => { b.disabled = state.over || busy || full; });
+    $('ballInfo').innerHTML = `탁구공<br><b>${state.queue.length}/${BALLS}</b>`;
+    $('queueCount').textContent = `${state.queue.length} / ${BALLS}개`;
+
+    // 칩 상태 (소멸/미사용/현재)
+    const plan = simulate(state.pos[me], state.queue);
+    const q = $('queue');
+    const shown = busy && state.playback ? state.playback.steps.map(s => s.dir) : state.queue;
+    const steps = busy && state.playback ? state.playback.steps : plan.steps;
+    if (!shown.length) {
+      q.innerHTML = `<span class="empty">${state.over ? '—' : '아직 입력한 화살표가 없습니다. (공이 하나도 안 들어갔다면 그대로 이동하기를 누르세요)'}</span>`;
+    } else {
+      q.innerHTML = shown.map((d, i) => {
+        const st = steps[i];
+        const cls = ['chip', d];
+        if (st && st.kind === 'vanish') cls.push('dead');
+        if (st && st.kind === 'unused') cls.push('unused');
+        if (busy && state.playback && state.playback.index === i) cls.push('current');
+        return `<div class="${cls.join(' ')}">
+          <span class="ord">${i + 1}번째</span>
+          <span class="arrow">${DIRS[d].arrow}</span>
+          <span class="lbl">${DIRS[d].label}</span>
+          ${busy ? '' : `<span class="tools">
+            <button data-act="left" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="앞으로">◀</button>
+            <button data-act="del" data-i="${i}" aria-label="삭제">✕</button>
+            <button data-act="right" data-i="${i}" ${i === shown.length - 1 ? 'disabled' : ''} aria-label="뒤로">▶</button>
+          </span>`}
+        </div>`;
+      }).join('');
+    }
+
+    $('clearBtn').disabled = state.over || busy || !state.queue.length;
+    $('goBtn').disabled = state.over || busy;
+    $('goBtn').textContent = state.queue.length ? '이동하기' : '이동 없이 차례 넘기기';
+  }
+
+  function renderLog() {
+    const ol = $('log');
+    ol.innerHTML = state.log.slice().reverse().map(l => `<li>${l}</li>`).join('');
+  }
+
+  // ---------------- result ----------------
+  function showResult() {
+    const sc = scores();
+    let title;
+    if (sc[0].total === sc[1].total) title = '무승부!';
+    else title = `${PLAYERS[sc[0].total > sc[1].total ? 0 : 1].name} 승리!`;
+    $('resultTitle').textContent = title;
+    $('resultWhy').textContent = state.endReason;
+    $('resultTable').innerHTML = `
+      <tr><th></th><th style="color:${PLAYERS[0].color}">${PLAYERS[0].name}</th><th style="color:${PLAYERS[1].color}">${PLAYERS[1].name}</th></tr>
+      <tr><td>차지한 칸</td><td>${sc[0].cells}칸</td><td>${sc[1].cells}칸</td></tr>
+      <tr><td>토큰 점수 (개수×500)</td><td>${sc[0].tokens}×500 = ${(sc[0].tokens * TOKEN_POINTS).toLocaleString()}</td><td>${sc[1].tokens}×500 = ${(sc[1].tokens * TOKEN_POINTS).toLocaleString()}</td></tr>
+      <tr><td>도착 보너스</td><td>${sc[0].bonus.toLocaleString()}</td><td>${sc[1].bonus.toLocaleString()}</td></tr>
+      <tr class="total"><td>총점</td><td>${sc[0].total.toLocaleString()}</td><td>${sc[1].total.toLocaleString()}</td></tr>`;
+    $('overlay').classList.add('show');
+  }
+  function hideResult() { $('overlay').classList.remove('show'); }
+
+  // ---------------- events ----------------
+  $('dpad').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-dir]');
+    if (b) addArrow(b.dataset.dir);
+  });
+  $('queue').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const i = Number(b.dataset.i);
+    if (b.dataset.act === 'del') removeAt(i);
+    if (b.dataset.act === 'left') swap(i, i - 1);
+    if (b.dataset.act === 'right') swap(i, i + 1);
+  });
+  $('clearBtn').addEventListener('click', () => { if (!state.animating) { state.queue = []; render(); } });
+  $('goBtn').addEventListener('click', executeTurn);
+  $('resetBtn').addEventListener('click', () => {
+    if (state.animating) return;
+    if (state.log.length && !state.over && !confirm('진행 중인 게임을 버리고 새로 시작할까요?')) return;
+    newGame();
+  });
+  $('againBtn').addEventListener('click', newGame);
+  $('closeResult').addEventListener('click', hideResult);
+
+  const KEYMAP = {
+    ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R',
+    w: 'U', s: 'D', a: 'L', d: 'R', W: 'U', S: 'D', A: 'L', D: 'R',
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('input, textarea')) return;
+    if (KEYMAP[e.key]) { e.preventDefault(); addArrow(KEYMAP[e.key]); return; }
+    if (e.key === 'Backspace' && state.queue.length && !state.animating) {
+      e.preventDefault(); removeAt(state.queue.length - 1); return;
+    }
+    if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); executeTurn(); }
+  });
+
+  newGame();
+})();
+</script>
+</body>
+</html>
