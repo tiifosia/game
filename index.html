@@ -43,18 +43,17 @@
   b, strong { font-weight: 400; }
 
   header {
-    padding: 22px 20px 10px;
+    padding: 14px 24px 6px;
     display: flex;
     align-items: center;
     gap: 14px;
     flex-wrap: wrap;
-    max-width: 1200px;
   }
   header h1 {
     margin: 0;
     font-family: var(--display);
     font-weight: 400;
-    font-size: 44px;
+    font-size: 42px;
     letter-spacing: 1px;
     color: var(--accent);
     text-shadow: 3px 3px 0 var(--ink), -1px -1px 0 var(--ink), 1px -1px 0 var(--ink), -1px 1px 0 var(--ink);
@@ -69,28 +68,85 @@
     font-size: 14px;
     box-shadow: 3px 3px 0 var(--ink);
   }
+  header #resetBtn { margin-left: auto; }
+
+  /* ---------- layout ----------
+     넓은 화면: [점수 / 기록] [판] [조작] 3열, 화면 높이에 맞춰 판 크기 결정 */
+  body { display: flex; flex-direction: column; height: 100vh; }
+  header { flex: none; }
   main {
+    --side: 250px;
+    --ctrl: 410px;
+    --gap: 22px;
+    --board: min(calc(100vh - 160px), calc(100vw - var(--side) - var(--ctrl) - 2 * var(--gap) - 64px), 860px);
+    flex: 1;
+    min-height: 0;
     display: grid;
-    grid-template-columns: minmax(300px, 560px) minmax(300px, 1fr);
-    gap: 24px;
-    padding: 10px 20px 32px;
-    max-width: 1200px;
+    grid-template-columns: var(--side) var(--board) var(--ctrl);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "side board ctrl"
+      "log  board ctrl";
+    justify-content: center;
+    align-items: start;
+    gap: var(--gap);
+    padding: 8px 24px 20px;
   }
-  @media (max-width: 860px) {
-    main { grid-template-columns: 1fr; padding: 10px 16px 28px; }
-    header { padding: 18px 16px 8px; }
-    header h1 { font-size: 34px; }
-  }
-  @media (max-width: 480px) {
-    .cell .coord { display: none; }
-    .card { padding: 14px; }
-  }
+  .side { grid-area: side; }
+  .board-area { grid-area: board; width: 100%; }
+  .controls { grid-area: ctrl; max-height: 100%; overflow-y: auto; }
+  .log { grid-area: log; align-self: stretch; min-height: 0; overflow-y: auto; }
   .card {
     background: var(--paper);
     border: 3px solid var(--ink);
     border-radius: 18px;
     padding: 18px;
     box-shadow: 7px 7px 0 var(--ink);
+  }
+
+  @media (min-width: 1181px) and (max-height: 820px) {
+    .dpad { grid-template-rows: repeat(3, 58px) !important; grid-template-columns: repeat(3, 70px) !important; margin: 4px 0 14px !important; }
+  }
+  /* 중간 화면: [점수+판+기록] [조작] 2열 */
+  @media (max-width: 1180px) {
+    body { display: block; height: auto; }
+    main {
+      --board: min(calc(100vw - var(--ctrl) - var(--gap) - 64px), 640px);
+      grid-template-columns: var(--board) var(--ctrl);
+      grid-template-rows: auto auto auto;
+      grid-template-areas:
+        "side  ctrl"
+        "board ctrl"
+        "log   ctrl";
+    }
+    .controls { max-height: none; }
+    .log { max-height: 260px; }
+    .side .players { grid-template-columns: 1fr 1fr; }
+  }
+  @media (min-width: 1181px) {
+    .controls .queue { flex-wrap: nowrap; gap: 6px; min-height: 0; }
+    .controls .chip { flex: 1 1 0; min-width: 0; padding: 4px 2px 5px; }
+    .controls .chip .tools { gap: 1px; }
+    .controls .chip .tools button { width: 17px; height: 18px; }
+  }
+  @media (min-width: 1181px) and (max-height: 760px) {
+    #turnHint, .kbd-hint { display: none; }
+    .turn-title { margin-bottom: 8px; }
+  }
+  /* 좁은 화면: 1열 */
+  @media (max-width: 860px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-areas: "side" "board" "ctrl" "log";
+      padding: 8px 16px 28px;
+    }
+    header { padding: 16px 16px 6px; }
+    header h1 { font-size: 34px; }
+    header #resetBtn { margin-left: 0; }
+  }
+  @media (max-width: 480px) {
+    .cell .coord { display: none; }
+    .card { padding: 14px; }
   }
 
   /* ---------- scoreboard ---------- */
@@ -113,9 +169,8 @@
   }
   .players {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 12px;
-    margin-bottom: 18px;
   }
   .pcard {
     border: 3px solid var(--ink);
@@ -144,6 +199,7 @@
     padding: 6px;
     border-radius: 16px;
     aspect-ratio: 1 / 1;
+    box-shadow: 7px 7px 0 var(--table-dark);
   }
   .cell {
     position: relative;
@@ -328,15 +384,10 @@
     border-radius: 5px; padding: 0 4px; background: #fff; color: var(--ink);
   }
 
-  .log {
-    margin-top: 18px;
-    max-height: 220px; overflow: auto;
-    font-size: 13px;
-    border-top: 3px dashed var(--ink);
-    padding-top: 12px;
-  }
+  .log { font-size: 13px; }
   .log ol { margin: 0; padding-left: 0; list-style: none; }
   .log li { margin-bottom: 4px; }
+  .log li.empty { color: var(--muted); }
   .log .vanish { color: var(--danger); }
 
   details.rules {
@@ -381,29 +432,33 @@
 <header>
   <h1>비어퐁 땅따먹기</h1>
   <span class="sub">공 던지고 → 화살표 모으고 → 땅 뺏기!</span>
+  <button class="btn" id="resetBtn">새 게임</button>
 </header>
 
 <main>
-  <section class="card">
+  <section class="card side">
     <div class="status">
       <span id="turnLabel"></span>
       <span class="round-pill" id="roundLabel"></span>
     </div>
     <div class="players" id="players"></div>
+  </section>
+
+  <section class="board-area">
     <div class="board-wrap">
       <div class="board" id="board"></div>
     </div>
     <div class="legend">
       <span>📍 출발 (1,1)</span>
       <span>🚩 도착 (5,5)</span>
-      <span>칸 왼쪽 아래 막대 = 쌓인 토큰 (위가 맨 위)</span>
+      <span>막대 = 쌓인 토큰 (위가 맨 위)</span>
       <span>색 테두리 = 이동 미리보기</span>
     </div>
   </section>
 
-  <section class="card">
+  <section class="card controls">
     <div class="turn-title" id="turnTitle"></div>
-    <p class="hint" id="turnHint">비어퐁에서 공이 들어간 컵의 방향을 입력하세요. 입력한 순서대로 이동하며, 칩의 ◀ ▶ 버튼으로 순서를 바꿀 수 있습니다.</p>
+    <p class="hint" id="turnHint"></p>
 
     <div class="dpad" id="dpad">
       <button class="U" data-dir="U">↑<small>상 · 노랑</small></button>
@@ -424,12 +479,7 @@
       <button class="btn primary" id="goBtn">이동하기</button>
     </div>
     <div class="kbd-hint">
-      키보드: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 또는 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 입력 · <kbd>Backspace</kbd> 마지막 삭제 · <kbd>Enter</kbd> 이동
-    </div>
-
-    <div class="log">
-      <h2>진행 기록</h2>
-      <ol id="log"></ol>
+      키보드: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> / <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · <kbd>⌫</kbd> 삭제 · <kbd>Enter</kbd> 이동
     </div>
 
     <details class="rules">
@@ -444,10 +494,11 @@
         <li>점수: 맨 위 토큰 주인이 그 칸의 토큰 전부 × 500점 + 먼저 도착 시 2,000점. 총점이 높은 쪽 승리</li>
       </ul>
     </details>
+  </section>
 
-    <div class="actions" style="margin-top:14px">
-      <button class="btn" id="resetBtn">새 게임</button>
-    </div>
+  <section class="card log">
+    <h2>진행 기록</h2>
+    <ol id="log"></ol>
   </section>
 </main>
 
@@ -732,7 +783,7 @@
       title.innerHTML = `<span class="dot" style="background:${PLAYERS[me].color}"></span>${PLAYERS[me].name}의 차례 <span style="color:var(--muted);font-weight:600;font-size:14px">· 현재 위치 ${fmt(state.pos[me])}</span>`;
       $('turnHint').textContent = busy
         ? '이동 중…'
-        : '비어퐁에서 공이 들어간 컵의 방향을 입력하세요. 입력한 순서대로 이동하며, 칩의 ◀ ▶ 버튼으로 순서를 바꿀 수 있습니다.';
+        : '공이 들어간 컵 방향을 입력하세요. 입력 순서대로 이동하고, ◀ ▶ 로 순서를 바꿀 수 있어요.';
     }
 
     const full = state.queue.length >= BALLS;
@@ -774,7 +825,9 @@
 
   function renderLog() {
     const ol = $('log');
-    ol.innerHTML = state.log.slice().reverse().map(l => `<li>${l}</li>`).join('');
+    ol.innerHTML = state.log.length
+      ? state.log.slice().reverse().map(l => `<li>${l}</li>`).join('')
+      : '<li class="empty">아직 기록이 없어요. 첫 번째 차례를 진행해 보세요!</li>';
   }
 
   // ---------------- result ----------------
