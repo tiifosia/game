@@ -1,46 +1,13 @@
-import { AXES, h, mount, rpc, store, subscribe } from './common.js';
+import { h, mount, rpc, store, subscribe } from './common.js';
+import { PHASE_NAME, TOKEN_KEY, primary } from './host-actions.js';
 
 const root = document.getElementById('app');
-const TOKEN_KEY = 'mbti-game-host';
 
 let token = store.get(TOKEN_KEY, '');
 let hs = null; // 진행자 상태
 let msg = '';
 let busy = false;
 let started = false;
-
-const PHASE_NAME = {
-  lobby: '시작 전 대기',
-  input: '1단계 · 내 MBTI 입력',
-  hints: '2단계 · 힌트 공개',
-  predict: '3단계 · 우리 반 MBTI 예측',
-  reveal: '4단계 · 정답 공개',
-  winners: '4단계 · 정답자 발표',
-  roster: '4단계 · 유형별 명단',
-};
-
-function primary(st) {
-  switch (st.phase) {
-    case 'lobby':
-      return { label: '게임 시작 · 첫 번째 QR 띄우기' };
-    case 'input':
-      return st.entryOpen
-        ? { label: '입력 마감하고 힌트 1 공개', confirm: `아직 입력이 열려 있습니다 (${st.entryCount}/${st.total}명). 마감하고 힌트로 넘어갈까요?` }
-        : { label: '힌트 1 공개' };
-    case 'hints':
-      return st.hintStep < 6 ? { label: `힌트 ${st.hintStep + 1} 공개` } : { label: '두 번째 QR 띄우기 (예측 시작)' };
-    case 'predict':
-      return st.predictionOpen
-        ? { label: '예측 마감하고 정답 공개 화면으로', confirm: `아직 예측이 열려 있습니다 (${st.predictionCount}/${st.total}명). 마감하고 넘어갈까요?` }
-        : { label: '정답 공개 화면으로' };
-    case 'reveal':
-      return st.revealStep < 4 ? { label: `${AXES[st.revealStep].axis} 결과 공개` } : { label: '정답자 발표' };
-    case 'winners':
-      return { label: '유형별 명단 보기' };
-    default:
-      return { label: '게임 끝', disabled: true };
-  }
-}
 
 function phaseSub(st) {
   switch (st.phase) {

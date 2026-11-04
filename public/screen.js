@@ -1,4 +1,5 @@
-import { AXES, h, mount, subscribe } from './common.js';
+import { AXES, h, mount, rpc, store, subscribe } from './common.js';
+import { TOKEN_KEY, primary } from './host-actions.js';
 
 const stage = document.getElementById('stage');
 const body = document.getElementById('body');
@@ -100,10 +101,10 @@ function hintList(hints, { highlightLast = false } = {}) {
 // mount()는 값을 돌려주지 않으므로 `mount(...) || fitFont(...)` 형태로 그린 직후 글자 크기를 맞춘다.
 let lastKey = '';
 
-function render(st) {
+function render(st, force = false) {
   renderSteps(st.phase);
   const key = `${st.gameId}|${st.phase}`;
-  const fresh = key !== lastKey;
+  const fresh = force || key !== lastKey;
   lastKey = key;
 
   switch (st.phase) {
@@ -256,7 +257,180 @@ function answerRow(st) {
   );
 }
 
-subscribe(render, {
+// ---------------------------------------------------------------------------
+// 진행자 조작 바: 이 화면을 그대로 프로젝터에 미러링하므로
+// 정답 미리보기·명단처럼 학생에게 보이면 안 되는 내용은 넣지 않는다.
+// ---------------------------------------------------------------------------
+const ctrlEl = document.getElementById('controls');
+let lastState = null;
+let token = store.get(TOKEN_KEY, '');
+let busy = false;
+let msg = '';
+let barHidden = false;
+let loginOpen = false;
+
+function setMsg(text) {
+  msg = text;
+  renderControls();
+}
+
+async function hostCall(action, extra = {}) {
+  if (busy || !token) return;
+  busy = true;
+  renderControls();
+  const data = await rpc('mbti_host_action', { pw: token, action, total: extra.total ?? null });
+  busy = false;
+  if (data.code === 'unauthorized' || data.code === 'no_password') {
+    logout();
+    return setMsg(data.message);
+  }
+  msg = data.ok ? '' : data.message || '실패했습니다.';
+  renderControls();
+}
+
+function next() {
+  if (!lastState || busy || !token) return;
+  const p = primary(lastState);
+  if (p.disabled) return;
+  if (p.confirm && !window.confirm(p.confirm)) return;
+  hostCall('next');
+}
+
+function reset() {
+  const answer = window.prompt('모든 입력과 결과를 지우고 처음으로 돌아갑니다.\n계속하려면 "초기화"라고 입력하세요.');
+  if (answer === null) return;
+  if (answer.trim() !== '초기화') return setMsg('초기화를 취소했습니다.');
+  hostCall('reset');
+}
+
+function logout() {
+  token = '';
+  store.remove(TOKEN_KEY);
+  renderControls();
+}
+
+async function login(pw) {
+  const data = await rpc('mbti_host_state', { pw });
+  if (!data.ok) return data.message || '로그인하지 못했습니다.';
+  token = pw;
+  store.set(TOKEN_KEY, pw);
+  loginOpen = false;
+  msg = '';
+  renderControls();
+  return '';
+}
+
+function loginBox() {
+  const input = h('input', { class: 'c-input', type: 'password', autocomplete: 'current-password', placeholder: '진행자 비밀번호', 'aria-label': '진행자 비밀번호' });
+  const err = h('p', { class: 'c-err', role: 'alert' });
+  const form = h(
+    'form',
+    {
+      class: 'c-login',
+      onsubmit: async (e) => {
+        e.preventDefault();
+        err.textContent = '확인 중…';
+        err.textContent = await login(input.value);
+      },
+    },
+    h('p', { class: 'c-login-h' }, '진행자 로그인'),
+    input,
+    h('div', { class: 'c-row' }, h('button', { class: 'c-btn primary', type: 'submit' }, '들어가기'), h('button', { class: 'c-btn', type: 'button', onclick: () => { loginOpen = false; renderControls(); } }, '취소')),
+    err,
+  );
+  setTimeout(() => input.focus(), 0);
+  return form;
+}
+
+function renderControls() {
+  const withBar = Boolean(token) && !barHidden;
+  if (stage.classList.contains('has-controls') !== withBar) {
+    // 조작 바만큼 화면 높이가 바뀌므로 글자 크기를 다시 맞춘다
+    stage.classList.toggle('has-controls', withBar);
+    if (lastState) render(lastState, true);
+  }
+  if (!token) {
+    // 비밀번호를 입력하는 동안 상태가 갱신돼도 입력 칸을 다시 만들지 않는다
+    if (loginOpen && ctrlEl.querySelector('.c-login')) return;
+    mount(ctrlEl, loginOpen ? loginBox() : h('button', { class: 'c-chip', type: 'button', onclick: () => { loginOpen = true; renderControls(); } }, '진행자 로그인'), msg ? h('p', { class: 'c-err' }, msg) : null);
+    return;
+  }
+  if (barHidden) {
+    mount(ctrlEl, h('button', { class: 'c-chip', type: 'button', title: 'H 키', onclick: toggleBar }, '조작 바 보이기'));
+    return;
+  }
+  const st = lastState;
+  if (!st) return mount(ctrlEl);
+  const p = primary(st);
+  const toggles = [];
+  if (st.phase === 'input') {
+    toggles.push(st.entryOpen
+      ? h('button', { class: 'c-btn', disabled: busy, onclick: () => hostCall('closeEntry') }, '입력 마감')
+      : h('button', { class: 'c-btn', disabled: busy, onclick: () => hostCall('reopenEntry') }, '입력 다시 열기'));
+  }
+  if (st.phase === 'predict') {
+    toggles.push(st.predictionOpen
+      ? h('button', { class: 'c-btn', disabled: busy, onclick: () => hostCall('closePrediction') }, '예측 마감')
+      : h('button', { class: 'c-btn', disabled: busy, onclick: () => hostCall('reopenPrediction') }, '예측 다시 열기'));
+  }
+  mount(
+    ctrlEl,
+    h(
+      'div',
+      { class: 'c-bar', role: 'toolbar', 'aria-label': '진행자 조작' },
+      h(
+        'div',
+        { class: 'c-row' },
+        h('span', { class: 'c-label' }, '총인원'),
+        h('button', { class: 'c-btn sq', disabled: busy || st.total <= 1, 'aria-label': '총인원 줄이기', onclick: () => hostCall('setTotal', { total: st.total - 1 }) }, '−'),
+        h('span', { class: 'c-num' }, st.total),
+        h('button', { class: 'c-btn sq', disabled: busy || st.total >= 500, 'aria-label': '총인원 늘리기', onclick: () => hostCall('setTotal', { total: st.total + 1 }) }, '+'),
+        toggles,
+        h('button', { class: 'c-btn', disabled: busy, onclick: reset }, '초기화'),
+        h('button', { class: 'c-btn', onclick: toggleBar, title: 'H 키' }, '숨기기'),
+        h('button', { class: 'c-btn', onclick: logout }, '로그아웃'),
+      ),
+      h(
+        'div',
+        { class: 'c-row' },
+        msg ? h('span', { class: 'c-err' }, msg) : h('span', { class: 'c-hint' }, '→ · Space · PageDown'),
+        h('button', { class: 'c-btn primary next', disabled: busy || p.disabled, onclick: next }, busy ? '처리 중…' : p.disabled ? p.label : `${p.label}  →`),
+      ),
+    ),
+  );
+}
+
+function toggleBar() {
+  barHidden = !barHidden;
+  renderControls();
+}
+
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (!token) return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+    e.preventDefault();
+    document.activeElement?.blur?.();
+    next();
+  } else if (e.key === 'h' || e.key === 'H' || e.key === 'ㅗ') {
+    toggleBar();
+  }
+});
+
+// 저장된 비밀번호가 아직 맞는지 확인
+if (token) {
+  rpc('mbti_host_state', { pw: token }).then((d) => {
+    if (d.code === 'unauthorized' || d.code === 'no_password') logout();
+  });
+}
+renderControls();
+
+subscribe((st) => {
+  lastState = st;
+  render(st);
+  renderControls();
+}, {
   withCounts: true,
   onConnection: (online) => {
     connEl.textContent = online ? '' : '연결 재시도 중…';

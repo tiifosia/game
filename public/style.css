@@ -1094,3 +1094,139 @@ a.p-btn {
   text-align: center;
   text-decoration: none;
 }
+
+/* =========================================================================
+   스크린 안의 진행자 조작 바 (화면을 그대로 프로젝터에 미러링)
+   ========================================================================= */
+.stage.has-controls {
+  padding-bottom: 150px;
+}
+
+.s-controls {
+  position: absolute;
+  left: 88px;
+  right: 88px;
+  bottom: 28px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.s-controls > * {
+  pointer-events: auto;
+}
+
+.c-bar {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  background: var(--surface);
+  border-radius: 24px;
+  padding: 14px 16px 14px 24px;
+}
+
+.c-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.c-btn {
+  font-size: 22px;
+  font-weight: 800;
+  padding: 12px 22px;
+  border-radius: 14px;
+  border: 2px solid var(--muted);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.c-btn.sq {
+  width: 52px;
+  padding: 12px 0;
+}
+
+.c-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.c-btn.next {
+  font-size: 28px;
+  font-weight: 900;
+  padding: 14px 32px;
+}
+
+.c-btn:disabled {
+  opacity: 0.5;
+}
+
+.c-label,
+.c-hint {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.c-num {
+  font-size: 26px;
+  font-weight: 900;
+  min-width: 44px;
+  text-align: center;
+}
+
+.c-err {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent);
+  margin: 0 12px;
+}
+
+.c-chip {
+  font-size: 20px;
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: 999px;
+  border: 2px solid var(--surface);
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.c-login {
+  width: 520px;
+  background: var(--surface);
+  border-radius: 24px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.c-login-h {
+  font-size: 30px;
+  font-weight: 900;
+  margin: 0;
+}
+
+.c-input {
+  font-size: 26px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 2px solid var(--muted);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.c-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.c-login .c-err {
+  margin: 0;
+  min-height: 1.2em;
+}
