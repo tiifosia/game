@@ -36,6 +36,8 @@ jobs:
             exit 1
           fi
           node -e 'require("fs").writeFileSync("public/config.js", "window.MBTI_CONFIG = " + JSON.stringify({ supabaseUrl: process.env.SUPABASE_URL.trim().replace(/\/+$/, ""), supabaseKey: process.env.SUPABASE_ANON_KEY.trim() }) + ";\n")'
+      # 배포 직후 옛 파일과 새 파일이 섞이지 않도록 파일 주소에 버전을 붙인다
+      - run: node scripts/stamp.mjs "${GITHUB_SHA::7}"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

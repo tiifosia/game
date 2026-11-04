@@ -222,30 +222,60 @@ function render(st, force = false) {
       ) || (w.names.length ? fitFont(document.getElementById('fit'), 72, 24) : undefined);
     }
 
-    case 'roster': {
-      const answer = st.reveal.map((r) => r.letter).join('');
-      const matches = (type) => [...answer].every((l, i) => l === 'X' || l === type[i]);
-      return mount(
-        body,
-        h('div', { class: 's-answer-row' }, h('span', { class: 'lbl' }, '우리 반 MBTI'), [...answer].map((l) => h('span', { class: 's-mini' }, l)), h('span', { class: 'lbl' }, ' · 유형별 명단')),
-        h(
-          'div',
-          { class: 's-roster' },
-          st.roster.map((r) =>
-            h(
-              'div',
-              { class: `s-cell${r.names.length ? '' : ' empty'}${matches(r.type) ? ' answer' : ''}` },
-              h('div', { class: 'ty' }, r.type, r.names.length ? h('span', {}, `${r.names.length}명`) : null),
-              h('div', { class: 'nm' }, r.names.join(', ')),
-            ),
-          ),
-        ),
-      ) || body.querySelectorAll('.s-cell .nm').forEach((el) => fitFont(el, 40, 16));
-    }
+    case 'roster':
+      return renderRoster(st);
 
     default:
       return mount(body);
   }
+}
+
+/** 칸 안의 글자를 줄여 맞추고, 끝까지 줄여도 넘치면 false */
+function fitsAfterShrink(cells, max, min) {
+  let allFit = true;
+  cells.forEach((el) => {
+    fitFont(el, max, min);
+    if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) allFit = false;
+  });
+  return allFit;
+}
+
+/**
+ * 유형별 명단. 기본은 16개 유형 4×4 표.
+ * 한 유형에 사람이 몰려 칸이 넘치면, 사람이 있는 유형만 남겨 칸을 키운다.
+ */
+function renderRoster(st) {
+  const answer = st.reveal.map((r) => r.letter).join('');
+  const matches = (type) => [...answer].every((l, i) => l === 'X' || l === type[i]);
+  const draw = (list, cols, rows) => {
+    const grid = h(
+      'div',
+      { class: 's-roster' },
+      list.map((r) =>
+        h(
+          'div',
+          { class: `s-cell${r.names.length ? '' : ' empty'}${matches(r.type) ? ' answer' : ''}` },
+          h('div', { class: 'ty' }, r.type, r.names.length ? h('span', {}, `${r.names.length}명`) : null),
+          h('div', { class: 'nm' }, r.names.join(', ')),
+        ),
+      ),
+    );
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    mount(
+      body,
+      h('div', { class: 's-answer-row' }, h('span', { class: 'lbl' }, '우리 반 MBTI'), [...answer].map((l) => h('span', { class: 's-mini' }, l)), h('span', { class: 'lbl' }, ' · 유형별 명단')),
+      grid,
+    );
+    return [...body.querySelectorAll('.s-cell .nm')];
+  };
+
+  if (fitsAfterShrink(draw(st.roster, 4, 4), 40, 18)) return;
+  const present = st.roster.filter((r) => r.names.length);
+  const n = Math.max(1, present.length);
+  const cols = n <= 3 ? n : n <= 4 ? 2 : n <= 9 ? 3 : 4;
+  const rows = Math.ceil(n / cols);
+  fitsAfterShrink(draw(present, cols, rows), 44, 12);
 }
 
 function answerRow(st) {

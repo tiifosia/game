@@ -21,6 +21,8 @@ body {
   font-family: var(--font);
   -webkit-text-size-adjust: 100%;
   word-break: keep-all;
+  /* 띄어쓰기 없는 긴 이름도 화면 폭을 넘지 않게 필요할 때만 줄을 바꾼다 */
+  overflow-wrap: anywhere;
 }
 
 button,
@@ -842,6 +844,8 @@ body.player {
 }
 
 .p-chips button {
+  max-width: 100%;
+  text-align: left;
   border: 2px solid var(--accent);
   background: transparent;
   color: var(--accent);
