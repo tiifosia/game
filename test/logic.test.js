@@ -35,7 +35,7 @@ function seq(...values) {
 describe('입력 검증', () => {
   it('이름을 정리하고 길이를 제한한다', () => {
     assert.equal(normalizeName('  홍   길동 '), '홍 길동');
-    assert.equal(normalizeName('a\u0000b​c'), 'abc');
+    assert.equal(normalizeName('a\u0000b\u200Bc'), 'abc');
     assert.equal(normalizeName(''), null);
     assert.equal(normalizeName('   '), null);
     assert.equal(normalizeName('가'.repeat(20)), '가'.repeat(20));

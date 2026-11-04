@@ -92,21 +92,35 @@ language sql immutable as $$
 $$;
 
 -- 이름 정리: 제어·서식 문자 제거, 공백 정리, 1~20자. 유효하지 않으면 null
+-- (복사·붙여 넣기에 안전하도록 특수문자는 chr() 코드로 만든다. 이 파일에는 ASCII 밖 보이지 않는 문자를 두지 않는다)
+create or replace function public.mbti_invisible_class() returns text
+language sql immutable as $$
+  -- 제어 문자, 소프트 하이픈, 폭 없는 공백·방향 표시, 줄/문단 구분, 단어 결합, BOM
+  select '[' || chr(1) || '-' || chr(31) || chr(127) || '-' || chr(159) || chr(173)
+             || chr(8203) || '-' || chr(8207) || chr(8232) || '-' || chr(8238)
+             || chr(8288) || '-' || chr(8292) || chr(65279) || ']';
+$$;
+
+create or replace function public.mbti_space_class() returns text
+language sql immutable as $$
+  -- 일반 공백 + 줄바꿈 없는 공백(160) + 전각 공백(12288)
+  select '[[:space:]' || chr(160) || chr(12288) || ']';
+$$;
+
 create or replace function public.mbti_norm_name(raw text) returns text
 language sql stable as $$
   select case when char_length(n) between 1 and 20 then n end
   from (
     select btrim(regexp_replace(
-             regexp_replace(normalize(coalesce(raw, ''), NFC),
-               '[\u0001-\u001F\u007F-\u009F­​-‏ -‮⁠-⁤﻿]', '', 'g'),
-             '[\s 　]+', ' ', 'g')) as n
+             regexp_replace(normalize(coalesce(raw, ''), NFC), public.mbti_invisible_class(), '', 'g'),
+             public.mbti_space_class() || '+', ' ', 'g')) as n
   ) s;
 $$;
 
 -- 동명이인이 없다는 전제에서 이름을 식별하는 키 (대소문자·띄어쓰기 무시)
 create or replace function public.mbti_key(name text) returns text
 language sql immutable as $$
-  select regexp_replace(lower(name), '[\s 　]', '', 'g');
+  select regexp_replace(lower(name), public.mbti_space_class(), '', 'g');
 $$;
 
 create or replace function public.mbti_norm_type(raw text) returns text

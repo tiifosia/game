@@ -147,15 +147,25 @@ describe('SQL 힌트 계산 = 기준 구현', { skip }, () => {
   });
 });
 
+describe('schema.sql 파일', () => {
+  it('복사·붙여 넣기로 깨질 수 있는 보이지 않는 문자가 없다', () => {
+    const bad = [...SCHEMA].filter((c) => /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(c) && c !== '\n' && c !== '\t' && c !== '\r');
+    const spaces = [...SCHEMA].filter((c) => /\p{Zs}/u.test(c) && c !== ' ');
+    assert.deepEqual([...bad, ...spaces].map((c) => c.codePointAt(0).toString(16)), []);
+  });
+});
+
 describe('SQL 입력 검증', { skip }, () => {
   it('이름 정리와 길이 제한', async () => {
     const cases = [
       ['  홍   길동 ', '홍 길동'],
-      ['a\u0001b​c', 'abc'],
+      ['a\u0001b\u200Bc', 'abc'],
       ['   ', null],
       ['가'.repeat(20), '가'.repeat(20)],
       ['가'.repeat(21), null],
       ['<script>', '<script>'],
+      [`김\u00A0민수\u3000`, '김 민수'],
+      ['\uFEFF이\u2028름\u00AD', '이름'],
     ];
     for (const [raw, want] of cases) {
       const [row] = await sql`select public.mbti_norm_name(${raw}) as n`;
