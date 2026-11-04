@@ -17,7 +17,7 @@ import {
   scoreGuess,
   submitEntry,
   submitPrediction,
-} from '../src/logic.js';
+} from './reference.js';
 
 /** "ENFP×3, ISTJ" 처럼 유형별 인원으로 입력 목록을 만든다 */
 function people(spec) {

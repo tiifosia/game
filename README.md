@@ -3,63 +3,69 @@
 수업 참여자 전원(약 30명)이 휴대폰으로 함께하는 5분짜리 자기소개 게임입니다.
 전원이 입력한 MBTI로 "우리 반 MBTI"를 만들고, 스크린의 힌트 6개를 보며 추리해 맞힙니다.
 
+배포 주소(예: `https://tiifosia.github.io/game/`) 아래에 네 화면이 있습니다.
+
 | 주소 | 용도 | 어디에 띄우나 |
 |---|---|---|
-| `/screen` | 중계 화면 (QR, 인원, 힌트, 결과) | 프로젝터 (1920×1080) |
-| `/host` | 진행자 조작 (비밀번호 필요) | 노트북 화면 |
-| `/me` | 첫 번째 QR: 이름과 내 MBTI | 학생 휴대폰 |
-| `/guess` | 두 번째 QR: 우리 반 MBTI 예측 | 학생 휴대폰 |
+| `screen/` | 중계 화면 (QR, 인원, 힌트, 결과) | 프로젝터 (1920×1080) |
+| `host/` | 진행자 조작 (비밀번호 필요) | 노트북 화면 |
+| `me/` | 첫 번째 QR: 이름과 내 MBTI | 학생 휴대폰 |
+| `guess/` | 두 번째 QR: 우리 반 MBTI 예측 | 학생 휴대폰 |
 
 QR 코드는 접속한 주소를 바탕으로 스크린에서 자동으로 만들어집니다.
 
 ## 구조
 
-- **Cloudflare Workers + Durable Objects** (무료 플랜)
-  - 게임 상태 전체를 Durable Object 하나가 보관합니다. 모든 제출이 한 곳으로 모여 순서대로 처리되고, 저장소에 기록되므로 서버가 재시작해도 데이터가 남습니다.
-  - 스크린과 휴대폰은 WebSocket으로 실시간 동기화되고, 연결이 끊기면 3초 간격 조회로 버티면서 자동 재연결합니다.
-- 정답, 집계, 정답 여부는 **서버에만** 있습니다. 서버는 공개된 힌트와 공개된 글자만 내려 주므로, 공개 전에는 API 응답이나 브라우저 데이터를 뒤져도 알 수 없습니다. 휴대폰은 공개된 글자와 내 예측을 비교해 정답 여부를 표시합니다.
-- 이름은 화면에 항상 텍스트로만 넣어(`textContent`) HTML로 해석되지 않습니다. CSP 헤더로 외부 스크립트도 막습니다.
+**GitHub Pages(화면) + Supabase(데이터·실시간)** — 이전 프로젝트(generated-world)와 같은 방식입니다.
+
+- 게임 규칙(힌트 계산, 채점, 단계 전환, 진행자 비밀번호 확인)은 모두 `supabase/schema.sql`의 Postgres 함수가 처리합니다.
+- 원본 데이터 테이블은 RLS로 막혀 있어 접속자가 읽거나 쓸 수 없습니다. 접속자는 `mbti_*` RPC 함수로만 제출합니다.
+- 화면에 보여도 되는 내용만 `mbti_live` 테이블 두 줄에 담아 Supabase Realtime으로 내보냅니다.
+  - `state`: 진행 단계, 공개된 힌트, 공개된 글자 → 스크린·휴대폰 모두 구독
+  - `counts`: 입력·제출 인원 → 스크린·진행자만 구독 (휴대폰은 안 받아서 실시간 메시지 사용량이 적음)
+- 정답과 정답 여부는 공개 단계가 되기 전까지 어떤 API 응답이나 실시간 메시지에도 들어가지 않습니다. 휴대폰은 공개된 글자와 내 예측을 비교해 정답 여부를 표시합니다.
+- 실시간 연결이 끊기면 3초마다 상태를 직접 가져오고, 다시 연결되면 자동으로 맞춥니다. 새로고침해도 현재 단계로 돌아옵니다.
+- 이름은 화면에 항상 텍스트로만 넣어(`textContent`) HTML로 해석되지 않습니다.
 
 ```
-src/logic.js       게임 규칙 (힌트·정답·채점·단계 전환·공개 범위) — 순수 함수
-src/worker.js      라우팅, Durable Object(저장·실시간 방송), 진행자 인증
-public/            화면 (screen / host / player), 공용 스타일, QR 라이브러리
-test/              힌트·채점 자동 테스트
-scripts/simulate.mjs  가상 플레이어 30명 전체 흐름 검증
+supabase/schema.sql   테이블·권한·게임 규칙 함수 (SQL Editor에서 한 번 실행)
+public/               배포되는 화면 (screen / host / me / guess)
+.github/workflows/    main에 올리면 GitHub Pages로 자동 배포
+test/                 힌트·채점 테스트, SQL 함수 테스트
+scripts/simulate.mjs  가상 플레이어 30명 전체 흐름 검증 (실제 Realtime 사용)
 ```
 
 ## 배포하기 (처음 한 번)
 
-필요한 것: Cloudflare 계정(무료). 카드 등록은 필요 없습니다.
+### 1. Supabase 프로젝트 만들기
+1. https://supabase.com/dashboard 에서 **New project** 를 누릅니다.
+   - 이름: 아무거나 (예: `mbti-class-game`)
+   - Database Password: 아무거나 (이 게임에서는 쓰지 않음)
+   - Region: **Northeast Asia (Seoul)**
+2. 프로젝트가 준비되면 왼쪽 **SQL Editor** → **New query** 에 `supabase/schema.sql` 내용을 전부 붙여 넣고 **Run**.
+3. 같은 SQL Editor에서 진행자 비밀번호를 정합니다. 따옴표 안을 바꿔서 실행하세요.
+   ```sql
+   select public.mbti_set_host_password('원하는-비밀번호');
+   ```
+4. **Project Settings → API Keys** (또는 상단 **Connect**)에서 두 값을 복사해 둡니다.
+   - Project URL (`https://xxxx.supabase.co`)
+   - Publishable key (`sb_publishable_...`) 또는 Legacy의 `anon` key
 
-1. https://dash.cloudflare.com/sign-up 에서 가입하고 이메일 인증을 마칩니다.
-2. 이 코드를 GitHub 저장소의 기본 브랜치(`main`)에 합칩니다. (지금은 작업 브랜치에 있습니다.)
-3. Cloudflare 대시보드 → **Workers & Pages** → **Create** → **Import a repository** 를 누릅니다.
-4. GitHub 연결을 허용하고 `tiifosia/game` 저장소를 고릅니다.
-5. 설정 화면에서
-   - 프로젝트 이름: `mbti-class-game` (wrangler.toml의 `name`과 같아야 합니다)
-   - Build command: 비워 둠
-   - Deploy command: `npx wrangler deploy`
-   그대로 **Deploy** 를 누릅니다.
-6. 배포가 끝나면 Worker 페이지 → **Settings** → **Variables and Secrets** → **Add** 에서
-   - Type: **Secret**, Name: `HOST_PASSWORD`, Value: 진행자 비밀번호
-   를 저장합니다. (이 비밀번호가 없으면 진행자 화면에 들어갈 수 없습니다.)
-7. 주소는 `https://mbti-class-game.<내 서브도메인>.workers.dev` 입니다. Worker 페이지 상단에서 확인할 수 있습니다.
+### 2. GitHub 설정
+1. 저장소 **Settings → Secrets and variables → Actions → New repository secret** 에 두 개를 등록합니다.
+   - `SUPABASE_URL` = Project URL
+   - `SUPABASE_ANON_KEY` = Publishable key(또는 anon key)
+2. 저장소 **Settings → Pages → Build and deployment → Source** 를 **GitHub Actions** 로 바꿉니다.
+3. 이 브랜치를 `main`에 합칩니다. **Actions** 탭에서 배포가 끝나면 주소는 `https://tiifosia.github.io/game/` 입니다.
 
-이후 `main`에 새 커밋을 올리면 자동으로 다시 배포됩니다.
+이후 `main`에 새 커밋을 올리면 자동으로 다시 배포됩니다. `schema.sql`을 고쳤다면 SQL Editor에서 다시 한 번 실행하면 됩니다(데이터는 유지).
 
-> 명령줄을 선호한다면 3~6번 대신:
-> ```bash
-> npm install
-> npx wrangler login
-> npx wrangler deploy
-> npx wrangler secret put HOST_PASSWORD
-> ```
+> **무료 플랜 주의:** Supabase 무료 프로젝트는 7일 동안 사용이 없으면 일시 정지됩니다. 수업 전날 리허설을 하면서 대시보드에서 프로젝트가 **Active** 인지 확인하고, 정지돼 있으면 **Restore** 를 누르세요.
 
 ## 수업 당일 진행
 
 1. 노트북을 프로젝터에 **확장 모드**로 연결합니다.
-2. 노트북 화면에서 `/host` 를 열고 비밀번호로 로그인합니다.
+2. 노트북 화면에서 `host/` 를 열고 비밀번호로 로그인합니다.
 3. **스크린 창 열기** 를 눌러 나온 창을 프로젝터 쪽으로 옮기고 전체 화면(F11)으로 만듭니다.
 4. 진행자 화면에서 **총인원** 을 실제 인원으로 맞춥니다.
 5. 큰 버튼(또는 → / Space / PageDown, 발표용 리모컨 가능)으로 진행합니다.
@@ -79,8 +85,10 @@ scripts/simulate.mjs  가상 플레이어 30명 전체 흐름 검증
 
 리허설 데이터는 수업 전에 꼭 지워 주세요.
 
-1. `/host` → 맨 아래 **게임 초기화** → 확인 창에 `초기화` 입력.
+1. `host/` → 맨 아래 **게임 초기화** → 확인 창에 `초기화` 입력.
 2. 모든 입력·예측·결과가 지워지고, 스크린과 학생 휴대폰도 자동으로 대기 화면으로 돌아갑니다(휴대폰에 남아 있던 이전 기록도 함께 지워짐). 총인원 설정은 유지됩니다.
+
+진행자 화면에 들어갈 수 없을 때는 Supabase SQL Editor에서 비밀번호를 다시 정할 수 있습니다(3번 단계 명령).
 
 ## 게임 규칙 요약
 
@@ -96,16 +104,21 @@ scripts/simulate.mjs  가상 플레이어 30명 전체 흐름 검증
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # 로컬 진행자 비밀번호 설정
-npm run dev                      # http://localhost:8787
 ```
 
 ```bash
-npm test                         # 힌트·채점 자동 테스트 (32개)
+npm test
 ```
+힌트·채점 기준 구현 테스트입니다. `DATABASE_URL`(Postgres 슈퍼유저 주소)을 주면 `schema.sql` 함수도 실제 DB에서 검증합니다(임시 DB를 만들었다 지움). SQL 힌트 계산이 기준 구현과 무작위 데이터 500개에서 완전히 같은지도 확인합니다.
 
 ```bash
-HOST_PASSWORD=<.dev.vars의 비밀번호> npm run simulate   # npm run dev 실행 중에, 가상 30명 전체 흐름
+SUPABASE_URL=https://xxxx.supabase.co SUPABASE_KEY=<publishable key> npm run serve
 ```
+`public/`을 http://localhost:8080 으로 띄웁니다. (`public/config.example.js` 를 `config.js` 로 복사해 값을 넣어도 됩니다.)
 
-`simulate` 는 `BASE_URL=https://배포주소` 를 주면 배포 서버에서도 돌릴 수 있지만, **게임 데이터를 초기화**하므로 수업 중에는 쓰지 마세요.
+```bash
+SUPABASE_URL=https://xxxx.supabase.co SUPABASE_KEY=<publishable key> HOST_PASSWORD=<진행자 비밀번호> npm run simulate
+```
+가상 플레이어 30명 + 스크린 1대가 실제 Realtime에 연결해 처음부터 끝까지 검증합니다. **게임 데이터를 초기화**하므로 수업 중에는 실행하지 마세요. 리허설 때 한 번 돌려 보고, 끝나면 그대로 대기 상태가 됩니다.
+
+외부 라이브러리 `public/vendor/qrcode.js`(qrcode-generator, MIT)와 `public/vendor/supabase.js`(@supabase/supabase-js 2.118.0 UMD, MIT)는 파일로 포함되어 있습니다.

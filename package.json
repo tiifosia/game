@@ -5,12 +5,12 @@
   "description": "수업 참여자 전원이 함께하는 5분 MBTI 추리 게임",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "serve": "node scripts/serve.mjs",
     "test": "node --test test/*.test.js",
     "simulate": "node scripts/simulate.mjs"
   },
   "devDependencies": {
-    "wrangler": "4.145.0"
+    "@supabase/supabase-js": "2.118.0",
+    "postgres": "3.4.7"
   }
 }

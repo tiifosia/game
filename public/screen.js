@@ -34,8 +34,12 @@ function renderSteps(phase) {
   );
 }
 
+// 스크린은 <배포 주소>/screen/ 에 있으므로 한 단계 위가 게임 주소다
+const BASE = new URL('../', location.href);
+const pageUrl = (name) => new URL(`${name}/`, BASE);
+
 function qrCanvas(path, size) {
-  const url = `${location.origin}${path}`;
+  const url = pageUrl(path).href;
   const qr = window.qrcode(0, 'M');
   qr.addData(url);
   qr.make();
@@ -57,7 +61,8 @@ function qrCanvas(path, size) {
 }
 
 function qrBox(path, size) {
-  return h('div', { class: 's-qr-box' }, qrCanvas(path, size), h('div', { class: 's-url' }, `${location.host}${path}`));
+  const u = pageUrl(path);
+  return h('div', { class: 's-qr-box' }, qrCanvas(path, size), h('div', { class: 's-url' }, `${u.host}${u.pathname}`.replace(/\/$/, '')));
 }
 
 function countBlock(n, total, label) {
@@ -120,7 +125,7 @@ function render(st) {
           h(
             'div',
             { class: 's-qr-layout' },
-            qrBox('/me', 584),
+            qrBox('me', 584),
             h('div', { id: 'side' }),
           ),
         );
@@ -149,7 +154,7 @@ function render(st) {
           h(
             'div',
             { class: 's-predict-layout' },
-            h('div', {}, qrBox('/guess', 444), h('div', { id: 'pcount' })),
+            h('div', {}, qrBox('guess', 444), h('div', { id: 'pcount' })),
             h(
               'div',
               {},
@@ -251,6 +256,9 @@ function answerRow(st) {
   );
 }
 
-subscribe(render, (online) => {
-  connEl.textContent = online ? '' : '연결 재시도 중…';
+subscribe(render, {
+  withCounts: true,
+  onConnection: (online) => {
+    connEl.textContent = online ? '' : '연결 재시도 중…';
+  },
 });

@@ -1,0 +1,51 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # 저장소 Secrets 로 Supabase 접속 설정 파일을 만든다 (두 값 모두 브라우저에 공개되는 값)
+      - name: Write config.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::저장소 Settings > Secrets and variables > Actions 에 SUPABASE_URL, SUPABASE_ANON_KEY 를 등록해 주세요."
+            exit 1
+          fi
+          node -e 'require("fs").writeFileSync("public/config.js", "window.MBTI_CONFIG = " + JSON.stringify({ supabaseUrl: process.env.SUPABASE_URL.trim().replace(/\/+$/, ""), supabaseKey: process.env.SUPABASE_ANON_KEY.trim() }) + ";\n")'
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

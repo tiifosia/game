@@ -1,5 +1,5 @@
-// 게임 규칙과 상태 전이를 담은 순수 함수 모음.
-// Cloudflare API에 의존하지 않으므로 Node 테스트에서 그대로 불러 쓸 수 있다.
+// 게임 규칙의 JavaScript 기준 구현(테스트 전용).
+// 실제 게임은 supabase/schema.sql 의 함수가 돌리며, test/sql.test.js 가 두 구현의 결과가 같은지 비교한다.
 
 export const AXES = [
   { axis: 'E/I', a: 'E', b: 'I' },

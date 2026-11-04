@@ -1,4 +1,4 @@
-import { AXES, api, h, mount, store, subscribe } from './common.js';
+import { AXES, h, mount, rpc, store, subscribe } from './common.js';
 
 const root = document.getElementById('app');
 const connEl = document.getElementById('conn');
@@ -39,8 +39,8 @@ function resetDraft(d) {
 async function syncWithServer() {
   const names = [...new Set([...device.entries, ...device.predictions].map((x) => x.name))];
   if (!names.length) return;
-  const { status, data } = await api('/api/mine', { method: 'POST', body: { names } });
-  if (status !== 200 || data.gameId !== device.gameId) return;
+  const data = await rpc('mbti_mine', { names });
+  if (!data.ok || data.gameId !== device.gameId) return;
   device.entries = data.entries;
   device.predictions = data.predictions;
   saveDevice();
@@ -173,7 +173,7 @@ async function submitEntry() {
   ui.busy = true;
   ui.error = '';
   render(true);
-  const { data } = await api('/api/entry', { method: 'POST', body: { name: d.name, mbti: d.letters.join('') } });
+  const data = await rpc('mbti_submit_entry', { name: d.name, mbti: d.letters.join('') });
   ui.busy = false;
   if (data.ok) {
     upsert(device.entries, { name: data.name, mbti: data.mbti });
@@ -273,9 +273,10 @@ async function submitPrediction(allowUnlinked) {
   ui.busy = true;
   ui.error = '';
   render(true);
-  const { data } = await api('/api/prediction', {
-    method: 'POST',
-    body: { name: d.name, guess: d.letters.join(''), allowUnlinked: Boolean(allowUnlinked) },
+  const data = await rpc('mbti_submit_prediction', {
+    name: d.name,
+    guess: d.letters.join(''),
+    allow_unlinked: Boolean(allowUnlinked),
   });
   ui.busy = false;
   ui.confirm = null;
@@ -513,7 +514,9 @@ function render(force = false) {
   }
 }
 
-subscribe(onState, (online) => {
-  connEl.textContent = online ? '' : '연결 재시도 중…';
-  connEl.classList.toggle('hidden', online);
+subscribe(onState, {
+  onConnection: (online) => {
+    connEl.textContent = online ? '' : '연결 재시도 중…';
+    connEl.classList.toggle('hidden', online);
+  },
 });

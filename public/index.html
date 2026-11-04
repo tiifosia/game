@@ -3,9 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:54321 ws://127.0.0.1:54321; base-uri 'none'; form-action 'self'" />
     <meta name="robots" content="noindex" />
     <title>우리 반 MBTI 추리</title>
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body class="player">
     <div class="p-wrap">
@@ -13,13 +14,13 @@
       <h1 class="p-h">학생이라면</h1>
       <div class="p-card">
         <p class="p-lead">스크린의 QR 코드를 찍어 주세요. 또는 아래 버튼으로 들어갈 수 있어요.</p>
-        <a class="p-btn" href="/me">참여하기</a>
+        <a class="p-btn" href="me/">참여하기</a>
       </div>
       <h1 class="p-h">진행자라면</h1>
       <div class="p-card">
         <p class="p-lead">스크린 창은 프로젝터에, 진행자 창은 노트북 화면에 띄우세요.</p>
-        <a class="p-btn ghost" href="/screen">스크린 화면</a>
-        <a class="p-btn ghost" href="/host">진행자 화면</a>
+        <a class="p-btn ghost" href="screen/">스크린 화면</a>
+        <a class="p-btn ghost" href="host/">진행자 화면</a>
       </div>
     </div>
   </body>

@@ -3,9 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:54321 ws://127.0.0.1:54321; base-uri 'none'; form-action 'self'" />
     <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#111111" />
     <title>우리 반 MBTI · 스크린</title>
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="../style.css" />
   </head>
   <body class="screen">
     <div class="stage" id="stage">
@@ -16,7 +18,9 @@
       <main class="s-body" id="body"></main>
       <div class="s-conn" id="conn" aria-live="polite"></div>
     </div>
-    <script src="/vendor/qrcode.js"></script>
-    <script type="module" src="/screen.js"></script>
+    <script src="../config.js"></script>
+    <script src="../vendor/supabase.js"></script>
+    <script src="../vendor/qrcode.js"></script>
+    <script type="module" src="../screen.js"></script>
   </body>
 </html>

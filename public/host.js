@@ -1,4 +1,4 @@
-import { AXES, api, h, mount, store, subscribe } from './common.js';
+import { AXES, h, mount, rpc, store, subscribe } from './common.js';
 
 const root = document.getElementById('app');
 const TOKEN_KEY = 'mbti-game-host';
@@ -65,10 +65,10 @@ async function call(body) {
   if (busy) return;
   busy = true;
   render();
-  const { status, data } = await api('/api/host/action', { method: 'POST', body, token });
+  const data = await rpc('mbti_host_action', { pw: token, action: body.action, total: body.total ?? null });
   busy = false;
-  if (status === 401) return logout('비밀번호가 바뀌었거나 올바르지 않습니다.');
-  if (status === 200) {
+  if (data.code === 'unauthorized' || data.code === 'no_password') return logout(data.message);
+  if (data.ok) {
     hs = data;
     msg = '';
   } else {
@@ -97,9 +97,9 @@ function reset() {
 }
 
 async function refresh() {
-  const { status, data } = await api('/api/host/state', { token });
-  if (status === 401 || status === 503) return logout(data.message);
-  if (status === 200) {
+  const data = await rpc('mbti_host_state', { pw: token });
+  if (data.code === 'unauthorized' || data.code === 'no_password') return logout(data.message);
+  if (data.ok) {
     hs = data;
     render();
   }
@@ -127,8 +127,8 @@ function renderLogin(reason = '') {
       onsubmit: async (e) => {
         e.preventDefault();
         token = input.value;
-        const { status, data } = await api('/api/host/state', { token });
-        if (status === 200) {
+        const data = await rpc('mbti_host_state', { pw: token });
+        if (data.ok) {
           store.set(TOKEN_KEY, token);
           hs = data;
           start();
@@ -194,7 +194,7 @@ function render() {
         h(
           'div',
           { class: 'h-row' },
-          h('button', { class: 'h-btn', onclick: () => window.open('/screen', 'mbti-screen') }, '스크린 창 열기'),
+          h('button', { class: 'h-btn', onclick: () => window.open(new URL('../screen/', location.href), 'mbti-screen') }, '스크린 창 열기'),
           h('button', { class: 'h-btn', onclick: () => logout() }, '로그아웃'),
         ),
       ),
@@ -255,7 +255,7 @@ function render() {
 function start() {
   if (started) return;
   started = true;
-  subscribe(onPublicState);
+  subscribe(onPublicState, { withCounts: true });
   document.addEventListener('keydown', (e) => {
     if (!hs) return;
     const tag = document.activeElement?.tagName;

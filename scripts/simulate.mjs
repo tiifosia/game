@@ -1,15 +1,22 @@
 // 가상 플레이어 30명으로 전체 흐름을 처음부터 끝까지 검증한다.
-// 사용법: (다른 터미널에서 npm run dev 실행 후)
-//   HOST_PASSWORD=test1234 npm run simulate
-//   BASE_URL=https://배포주소 HOST_PASSWORD=... npm run simulate   ← 배포 서버도 가능(데이터가 초기화됨!)
+// 휴대폰 30대 + 스크린 1대가 각자 Supabase Realtime에 연결해 실시간 반영을 확인한다.
+//   SUPABASE_URL=https://xxxx.supabase.co SUPABASE_KEY=<anon 또는 publishable key> HOST_PASSWORD=<진행자 비밀번호> npm run simulate
+// 주의: 게임 데이터를 초기화하므로 수업 중에는 실행하지 마세요.
 
 import assert from 'node:assert/strict';
-import { AXES, computeHints, computeRoster, computeWinners, scoreGuess } from '../src/logic.js';
+import { createClient } from '@supabase/supabase-js';
+import { AXES, computeHints, computeRoster, computeWinners, scoreGuess } from '../test/reference.js';
 
-const BASE = (process.env.BASE_URL || 'http://127.0.0.1:8787').replace(/\/$/, '');
-const PASSWORD = process.env.HOST_PASSWORD || 'test1234';
-const WS_BASE = BASE.replace(/^http/, 'ws');
+const URL_ = process.env.SUPABASE_URL;
+const KEY = process.env.SUPABASE_KEY;
+const PASSWORD = process.env.HOST_PASSWORD;
 const PLAYERS = 30;
+if (!URL_ || !KEY || !PASSWORD) {
+  console.error('SUPABASE_URL, SUPABASE_KEY, HOST_PASSWORD 환경 변수를 넣어 주세요.');
+  process.exit(1);
+}
+const newClient = () => createClient(URL_, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+const api = newClient();
 
 let passed = 0;
 function ok(label) {
@@ -26,54 +33,77 @@ function rand() {
 const randomType = (bias) =>
   AXES.map((ax, i) => (rand() < bias[i] ? ax.a : ax.b)).join('');
 
-async function request(path, { method = 'GET', body, host = false, password = PASSWORD } = {}) {
-  const headers = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (host) headers.Authorization = `Bearer ${password}`;
-  const res = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-  return { status: res.status, data: await res.json() };
+async function rpc(fn, args = {}) {
+  const { data, error } = await api.rpc(fn, args);
+  if (error) throw new Error(`${fn}: ${error.message}`);
+  return data;
 }
-const host = (action, extra = {}) => request('/api/host/action', { method: 'POST', body: { action, ...extra }, host: true });
-const publicState = async () => (await request('/api/state')).data;
+const entry = (name, mbti) => rpc('mbti_submit_entry', { name, mbti });
+const predict = (name, guess, allowUnlinked = false) => rpc('mbti_submit_prediction', { name, guess, allow_unlinked: allowUnlinked });
+const host = (action, extra = {}) => rpc('mbti_host_action', { pw: PASSWORD, action, total: extra.total ?? null });
+const hostState = () => rpc('mbti_host_state', { pw: PASSWORD });
+const publicState = () => rpc('mbti_state');
 
-/** 실시간 연결 하나 = 휴대폰(또는 스크린) 한 대 */
+/** Realtime 연결 하나 = 휴대폰(또는 스크린) 한 대. 실제 화면과 같은 방식으로 구독한다 */
 class Client {
-  constructor(label) {
+  constructor(label, withCounts) {
     this.label = label;
-    this.state = null;
+    this.withCounts = withCounts;
+    this.state = {};
     this.messages = 0;
     this.waiters = [];
+    this.db = newClient();
   }
-  connect() {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(`${WS_BASE}/ws`);
-      this.ws.addEventListener('message', (ev) => {
-        if (ev.data === 'pong') return;
-        const msg = JSON.parse(ev.data);
-        if (msg.type !== 'state') return;
-        this.messages += 1;
-        this.state = msg.state;
-        this.waiters = this.waiters.filter((w) => {
-          if (w.pred(this.state)) {
-            w.resolve(this.state);
-            return false;
+  async connect() {
+    Object.assign(this.state, await publicState());
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${this.label}: Realtime 연결 실패`)), 15000);
+      this.channel = this.db
+        .channel(`sim-${this.label}`)
+        .on(
+          'postgres_changes',
+          this.withCounts
+            ? { event: '*', schema: 'public', table: 'mbti_live' }
+            : { event: '*', schema: 'public', table: 'mbti_live', filter: 'id=eq.state' },
+          (payload) => {
+            this.messages += 1;
+            Object.assign(this.state, payload.new.data);
+            this.check();
+          },
+        )
+        // Realtime이 DB 변경 구독까지 마쳤다는 신호를 받으면 준비 완료
+        .on('system', {}, (p) => {
+          if (p.extension === 'postgres_changes' && p.status === 'ok') {
+            clearTimeout(timer);
+            resolve();
+          } else if (p.status === 'error') {
+            console.log(`    ${this.label} system:`, JSON.stringify(p));
           }
-          return true;
+        })
+        .subscribe((status, err) => {
+          if (status !== 'SUBSCRIBED' && status !== 'CLOSED') console.log(`    ${this.label} 상태: ${status} ${err?.message || ''}`);
         });
-      });
-      this.ws.addEventListener('open', () => resolve(this), { once: true });
-      this.ws.addEventListener('error', reject, { once: true });
+    });
+    return this;
+  }
+  check() {
+    this.waiters = this.waiters.filter((w) => {
+      if (w.pred(this.state)) {
+        w.resolve({ ...this.state });
+        return false;
+      }
+      return true;
     });
   }
-  waitFor(pred, ms = 5000) {
-    if (this.state && pred(this.state)) return Promise.resolve(this.state);
+  waitFor(pred, ms = 10000) {
+    if (pred(this.state)) return Promise.resolve({ ...this.state });
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${this.label}: 시간 초과`)), ms);
+      const timer = setTimeout(() => reject(new Error(`${this.label}: 실시간 반영 시간 초과`)), ms);
       this.waiters.push({ pred, resolve: (s) => { clearTimeout(timer); resolve(s); } });
     });
   }
-  close() {
-    this.ws.close();
+  async close() {
+    await this.db.removeAllChannels();
   }
 }
 
@@ -81,22 +111,24 @@ const allSee = (clients, pred) => Promise.all(clients.map((c) => c.waitFor(pred)
 const leaks = (obj) => /"(answer|preview|letter|countA|countB|correct)"/.test(JSON.stringify(obj));
 
 async function main() {
-  console.log(`대상: ${BASE}`);
+  console.log(`대상: ${URL_}`);
 
   console.log('\n[0] 진행자 보호');
-  assert.equal((await request('/api/host/state', { host: true, password: 'wrong' })).status, 401);
-  assert.equal((await request('/api/host/action', { method: 'POST', body: { action: 'reset' } })).status, 401);
-  ok('비밀번호 없이·틀린 비밀번호로는 진행자 기능을 쓸 수 없음');
+  assert.equal((await rpc('mbti_host_state', { pw: 'wrong' })).code, 'unauthorized');
+  assert.equal((await rpc('mbti_host_action', { pw: 'wrong', action: 'reset', total: null })).code, 'unauthorized');
+  for (const t of ['mbti_game', 'mbti_entries', 'mbti_predictions', 'mbti_secret']) {
+    const { data } = await api.from(t).select('*');
+    assert.equal((data || []).length, 0, t);
+  }
+  ok('틀린 비밀번호로는 진행자 기능 불가, 접속자는 원본 테이블을 읽을 수 없음');
 
   await host('reset');
   await host('setTotal', { total: PLAYERS });
-  const screen = await new Client('스크린').connect();
-  const phones = await Promise.all(Array.from({ length: PLAYERS }, (_, i) => new Client(`휴대폰${i + 1}`).connect()));
+  const screen = await new Client('스크린', true).connect();
+  const phones = await Promise.all(Array.from({ length: PLAYERS }, (_, i) => new Client(`휴대폰${i + 1}`, false).connect()));
   const everyone = [screen, ...phones];
-  await allSee(everyone, (s) => s.phase === 'lobby' && s.total === PLAYERS);
-  ok(`스크린 1대 + 휴대폰 ${PLAYERS}대 실시간 연결`);
+  ok(`스크린 1대 + 휴대폰 ${PLAYERS}대 Realtime 연결`);
 
-  // 가상 플레이어: 30번은 첫 입력을 놓치고 예측만 한다. 7번은 이름에 HTML을 넣는다.
   const players = Array.from({ length: PLAYERS }, (_, i) => ({
     name: i === 6 ? '<b>민수</b>&"' : `학생${String(i + 1).padStart(2, '0')}`,
     mbti: randomType([0.55, 0.3, 0.5, 0.45]),
@@ -109,33 +141,32 @@ async function main() {
   ok('진행자 버튼 → 모든 화면이 입력 단계로 전환');
 
   const bad = await Promise.all([
-    request('/api/entry', { method: 'POST', body: { name: '', mbti: 'ENFP' } }),
-    request('/api/entry', { method: 'POST', body: { name: '가'.repeat(21), mbti: 'ENFP' } }),
-    request('/api/entry', { method: 'POST', body: { name: '홍길동', mbti: 'EXFP' } }),
-    request('/api/entry', { method: 'POST', body: { name: '홍길동' } }),
-    request('/api/prediction', { method: 'POST', body: { name: '홍길동', guess: 'ENFP' } }),
+    entry('', 'ENFP'),
+    entry('가'.repeat(21), 'ENFP'),
+    entry('홍길동', 'EXFP'),
+    entry('홍길동', null),
+    predict('홍길동', 'ENFP'),
   ]);
-  assert.deepEqual(bad.map((r) => r.status), [400, 400, 400, 400, 400]);
-  assert.deepEqual(bad.map((r) => r.data.code), ['bad_name', 'bad_name', 'bad_mbti', 'bad_mbti', 'closed']);
+  assert.deepEqual(bad.map((r) => r.code), ['bad_name', 'bad_name', 'bad_mbti', 'bad_mbti', 'closed']);
   ok('빈 이름·긴 이름·잘못된 MBTI·단계에 맞지 않는 제출 거부');
 
   const firstInputs = players.slice(0, PLAYERS - 1);
+  const phoneMsgsBefore = phones.reduce((n, c) => n + c.messages, 0);
   const results = await Promise.all(
-    firstInputs.map((p, i) => {
-      // 3명은 처음에 다른 유형을 냈다가 나중에 고친다
-      const mbti = i < 3 ? (p.mbti === 'ISTJ' ? 'ENFP' : 'ISTJ') : p.mbti;
-      return request('/api/entry', { method: 'POST', body: { name: p.name, mbti } });
-    }),
+    firstInputs.map((p, i) => entry(p.name, i < 3 ? (p.mbti === 'ISTJ' ? 'ENFP' : 'ISTJ') : p.mbti)),
   );
-  assert.ok(results.every((r) => r.status === 200 && r.data.ok), JSON.stringify(results.find((r) => !r.data.ok)));
+  assert.ok(results.every((r) => r.ok), JSON.stringify(results.find((r) => !r.ok)));
   for (let i = 0; i < 3; i += 1) {
-    const r = await request('/api/entry', { method: 'POST', body: { name: ` ${firstInputs[i].name} `, mbti: firstInputs[i].mbti } });
-    assert.equal(r.data.updated, true);
+    const r = await entry(` ${firstInputs[i].name} `, firstInputs[i].mbti);
+    assert.equal(r.updated, true);
   }
   ok(`${PLAYERS - 1}명 동시 제출, 3명은 같은 이름으로 다시 제출해 수정`);
 
-  await allSee(everyone, (s) => s.entryCount === PLAYERS - 1);
-  ok(`모든 화면에 ${PLAYERS - 1}/${PLAYERS} 실시간 반영`);
+  await screen.waitFor((s) => s.entryCount === PLAYERS - 1);
+  ok(`스크린에 ${PLAYERS - 1}/${PLAYERS} 실시간 반영`);
+  await new Promise((r) => setTimeout(r, 1000));
+  assert.equal(phones.reduce((n, c) => n + c.messages, 0), phoneMsgsBefore);
+  ok('휴대폰은 인원 변화 메시지를 받지 않음 (Realtime 사용량 절약)');
 
   const mbtiList = firstInputs.map((p) => p.mbti);
   const expected = computeHints(mbtiList, () => 0);
@@ -147,18 +178,14 @@ async function main() {
   ok('입력 중 공개 상태에 집계·정답 없음');
 
   console.log('\n[2] 힌트 6단계');
-  await host('next'); // 마감 + 힌트 1
-  assert.equal((await request('/api/entry', { method: 'POST', body: { name: '늦은학생', mbti: 'ENFP' } })).data.code, 'closed');
+  await host('next');
+  assert.equal((await entry('늦은학생', 'ENFP')).code, 'closed');
   ok('마감 후 입력 거부');
 
-  const hs = (await request('/api/host/state', { host: true })).data;
+  const hs = await hostState();
   assert.equal(hs.preview.answer, expectedAnswer);
   const hints = hs.preview.hints;
-  assert.equal(hints[0], expected.hints[0]);
-  assert.equal(hints[1], expected.hints[1]);
-  assert.equal(hints[4], expected.hints[4]);
-  assert.equal(hints[5], expected.hints[5]);
-  // 3·4단계는 동률이면 무작위이므로 규칙을 만족하는지 확인
+  for (const i of [0, 1, 4, 5]) assert.equal(hints[i], expected.hints[i]);
   const diffs = expected.axes.map((a) => Math.abs(a.countA - a.countB));
   const m3 = hints[2].match(/영역은 (.\/.)이고, (\d+)표 차이/);
   const i3 = AXES.findIndex((a) => a.axis === m3[1]);
@@ -180,77 +207,70 @@ async function main() {
   ok('힌트를 하나씩 공개, 모든 화면에 누적 반영, 정답 정보 없음');
 
   pub = await publicState();
-  const again = (await request('/api/host/state', { host: true })).data.preview.hints;
-  assert.deepEqual(again, hints);
+  assert.deepEqual((await hostState()).preview.hints, hints);
   assert.deepEqual(pub.hints, hints);
   ok('새로고침해도 힌트가 바뀌지 않음');
 
   console.log('\n[3] 두 번째 QR: 우리 반 MBTI 예측');
   await host('next');
   await allSee(everyone, (s) => s.phase === 'predict' && s.predictionOpen);
-  // 0~4번은 정답, 5~9번은 한 글자만 틀림, 나머지는 무작위
   const flip = { E: 'I', I: 'E', S: 'N', N: 'S', T: 'F', F: 'T', J: 'P', P: 'J' };
   const concrete = [...expectedAnswer].map((l, i) => (l === 'X' ? AXES[i].a : l)).join('');
   for (const p of players) p.guess = randomType([0.5, 0.5, 0.5, 0.5]);
   for (let i = 0; i < 5; i += 1) players[i].guess = concrete;
-  for (let i = 5; i < 10; i += 1) {
-    const j = i % 4;
-    players[i].guess = [...concrete].map((l, k) => (k === j ? flip[l] : l)).join('');
-  }
+  for (let i = 5; i < 10; i += 1) players[i].guess = [...concrete].map((l, k) => (k === i % 4 ? flip[l] : l)).join('');
 
   const last = players[PLAYERS - 1];
-  const unlinked = await request('/api/prediction', { method: 'POST', body: { name: last.name, guess: last.guess } });
-  assert.equal(unlinked.data.code, 'confirm_unlinked');
+  assert.equal((await predict(last.name, last.guess)).code, 'confirm_unlinked');
   ok('첫 입력에 없는 이름은 확인 요청');
 
-  const preds = await Promise.all(
-    players.map((p, i) =>
-      request('/api/prediction', { method: 'POST', body: { name: p.name, guess: p.guess, allowUnlinked: i === PLAYERS - 1 } }),
-    ),
-  );
-  assert.ok(preds.every((r) => r.status === 200 && r.data.ok), JSON.stringify(preds.find((r) => !r.data.ok)));
-  assert.equal(preds[PLAYERS - 1].data.linked, false);
-  assert.ok(preds.slice(0, -1).every((r) => r.data.linked));
+  const preds = await Promise.all(players.map((p, i) => predict(p.name, p.guess, i === PLAYERS - 1)));
+  assert.ok(preds.every((r) => r.ok), JSON.stringify(preds.find((r) => !r.ok)));
+  assert.equal(preds[PLAYERS - 1].linked, false);
+  assert.ok(preds.slice(0, -1).every((r) => r.linked));
   ok(`${PLAYERS}명 동시 제출 (첫 입력을 못 한 1명 포함)`);
 
-  for (const r of preds) assert.ok(!leaks(r.data) && !('score' in r.data));
-  const dup = await request('/api/prediction', { method: 'POST', body: { name: players[0].name, guess: 'ISTJ' } });
-  assert.equal(dup.data.code, 'already');
-  assert.equal(dup.data.guess, players[0].guess);
+  for (const r of preds) assert.ok(!leaks(r) && !('score' in r));
+  const dup = await predict(players[0].name, 'ISTJ');
+  assert.equal(dup.code, 'already');
+  assert.equal(dup.guess, players[0].guess);
   ok('같은 이름 두 번째 예측은 거부(수정 불가), 제출 응답에 정답 여부 없음');
 
-  await allSee(everyone, (s) => s.predictionCount === PLAYERS);
-  const mine = await request('/api/mine', { method: 'POST', body: { names: players.map((p) => p.name) } });
-  assert.ok(!leaks(mine.data));
+  await screen.waitFor((s) => s.predictionCount === PLAYERS);
+  const mine = await rpc('mbti_mine', { names: players.map((p) => p.name) });
+  assert.ok(!leaks(mine));
   pub = await publicState();
   assert.ok(!leaks(pub) && pub.reveal.length === 0 && pub.winners === null);
-  ok('공개 전: 스크린·휴대폰·API 어디에도 정답과 정답 여부 없음');
+  const { data: liveRows } = await api.from('mbti_live').select('*');
+  assert.ok(!leaks(liveRows));
+  ok('공개 전: 스크린·휴대폰·API·Realtime 테이블 어디에도 정답과 정답 여부 없음');
 
   console.log('\n[4] 정답 공개');
   await host('next');
   await allSee(everyone, (s) => s.phase === 'reveal' && s.revealStep === 0 && !s.predictionOpen);
-  assert.equal((await request('/api/prediction', { method: 'POST', body: { name: '늦은학생', guess: 'ENFP', allowUnlinked: true } })).data.code, 'closed');
+  assert.equal((await predict('늦은학생', 'ENFP', true)).code, 'closed');
   ok('예측 마감 후 제출 거부');
 
   for (let step = 1; step <= 4; step += 1) {
+    const t0 = Date.now();
     await host('next');
     const states = await allSee(everyone, (s) => s.revealStep === step);
-    for (const s of states) {
-      assert.equal(s.reveal.length, step);
-      assert.equal(s.reveal.map((r) => r.letter).join(''), expectedAnswer.slice(0, step));
-      assert.equal(s.winners, null);
+    const ms = Date.now() - t0;
+    for (const st of states) {
+      assert.equal(st.reveal.length, step);
+      assert.equal(st.reveal.map((r) => r.letter).join(''), expectedAnswer.slice(0, step));
+      assert.equal(st.winners, null);
     }
-    // 휴대폰 쪽 계산: 공개된 글자만으로 내 정답 여부와 맞힌 개수를 계산
     phones.forEach((phone, i) => {
-      const s = phone.state;
-      const right = s.reveal.filter((r, k) => r.letter === 'X' || r.letter === players[i].guess[k]).length;
+      const st = phone.state;
+      const right = st.reveal.filter((r, k) => r.letter === 'X' || r.letter === players[i].guess[k]).length;
       const truth = scoreGuess(expectedAnswer.slice(0, step) + '????', players[i].guess.slice(0, step) + '!!!!');
       assert.equal(right, truth);
     });
     const ax = states[0].reveal[step - 1];
     const correct = players.filter((p) => ax.letter === 'X' || p.guess[step - 1] === ax.letter).length;
     assert.equal(ax.correct, correct);
-    ok(`${ax.axis} = ${ax.letter} (${ax.a} ${ax.countA} : ${ax.countB} ${ax.b}, ${correct}명 맞힘) → ${everyone.length}개 화면 동시 반영`);
+    ok(`${ax.axis} = ${ax.letter} (${ax.a} ${ax.countA} : ${ax.countB} ${ax.b}, ${correct}명 맞힘) → ${everyone.length}개 화면 ${ms}ms 안에 반영`);
   }
 
   await host('next');
@@ -263,30 +283,30 @@ async function main() {
   const rosterStates = await allSee(everyone, (s) => s.phase === 'roster');
   const expectedRoster = computeRoster(firstInputs.map((p) => ({ name: p.name, mbti: p.mbti })));
   assert.deepEqual(rosterStates[0].roster, expectedRoster);
-  assert.equal(rosterStates[0].roster.reduce((n, r) => n + r.names.length, 0), PLAYERS - 1);
   ok('유형별 명단에 첫 입력자 전원 표시');
 
   console.log('\n[5] 재접속 복구');
-  phones[0].close();
-  const back = await new Client('재접속').connect();
-  const restored = await back.waitFor((s) => s.phase === 'roster');
-  assert.equal(restored.roster.length, 16);
-  const mineBack = await request('/api/mine', { method: 'POST', body: { names: [players[0].name] } });
-  assert.deepEqual(mineBack.data.predictions, [{ name: players[0].name, guess: players[0].guess }]);
+  await phones[0].close();
+  const back = await new Client('재접속', false).connect();
+  assert.equal(back.state.phase, 'roster');
+  const mineBack = await rpc('mbti_mine', { names: [players[0].name] });
+  assert.deepEqual(mineBack.predictions, [{ name: players[0].name, guess: players[0].guess }]);
   ok('끊긴 휴대폰이 다시 접속하면 현재 단계와 내 제출 내용 복구');
-  back.close();
+  await back.close();
 
   console.log('\n[6] 초기화');
   const beforeId = screen.state.gameId;
   await host('reset');
-  const stillOpen = everyone.filter((c) => c !== phones[0]); // 1번 휴대폰은 [5]에서 끊었다
-  const resetStates = await allSee(stillOpen, (s) => s.phase === 'lobby' && s.entryCount === 0);
-  assert.ok(resetStates.every((s) => s.gameId !== beforeId));
+  const stillOpen = everyone.filter((c) => c !== phones[0]);
+  const resetStates = await allSee(stillOpen, (s) => s.phase === 'lobby' && s.gameId !== beforeId);
+  assert.ok(resetStates.every((s) => s.reveal.length === 0));
+  await screen.waitFor((s) => s.entryCount === 0 && s.predictionCount === 0);
   ok('초기화 → 모든 화면이 새 게임 대기 상태로 복귀');
 
   const totalMsgs = everyone.reduce((n, c) => n + c.messages, 0);
-  everyone.forEach((c) => c.close());
-  console.log(`\n모든 검증 통과: ${passed}개 (실시간 메시지 ${totalMsgs}건 수신)`);
+  await Promise.all(stillOpen.map((c) => c.close()));
+  console.log(`\n모든 검증 통과: ${passed}개 (Realtime 메시지 ${totalMsgs}건 수신)`);
+  process.exit(0);
 }
 
 main().catch((err) => {

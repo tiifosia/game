@@ -3,14 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:54321 ws://127.0.0.1:54321; base-uri 'none'; form-action 'self'" />
     <meta name="robots" content="noindex" />
     <meta name="theme-color" content="#111111" />
     <title>우리 반 MBTI 추리</title>
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="../style.css" />
   </head>
   <body class="player">
     <div id="app"><div class="p-wrap"><p class="p-lead">불러오는 중…</p></div></div>
     <div class="p-conn hidden" id="conn" aria-live="polite"></div>
-    <script type="module" src="/player.js"></script>
+    <script src="../config.js"></script>
+    <script src="../vendor/supabase.js"></script>
+    <script type="module" src="../player.js"></script>
   </body>
 </html>

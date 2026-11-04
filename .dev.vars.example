@@ -1,2 +1,0 @@
-# 로컬 개발용 진행자 비밀번호. 이 파일을 .dev.vars 로 복사해 쓰세요.
-HOST_PASSWORD=change-me
