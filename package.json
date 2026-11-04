@@ -1,0 +1,16 @@
+{
+  "name": "mbti-class-game",
+  "version": "1.0.0",
+  "private": true,
+  "description": "수업 참여자 전원이 함께하는 5분 MBTI 추리 게임",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js",
+    "simulate": "node scripts/simulate.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.145.0"
+  }
+}
