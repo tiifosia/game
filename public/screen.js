@@ -285,11 +285,20 @@ async function hostCall(action, extra = {}) {
     return setMsg(data.message);
   }
   msg = data.ok ? '' : data.message || '실패했습니다.';
+  // 실시간 메시지를 기다리지 않고 진행 화면을 바로 바꾼다
+  if (data.ok && live) {
+    const { ok, entryNames, predictionNames, preview, ...pub } = data;
+    live.apply(pub);
+  }
   renderControls();
 }
 
+let lastNextAt = 0;
 function next() {
   if (!lastState || busy || !token) return;
+  // 리모컨·키보드를 두 번 눌러 단계를 건너뛰지 않도록 잠깐 간격을 둔다
+  if (Date.now() - lastNextAt < 700) return;
+  lastNextAt = Date.now();
   const p = primary(lastState);
   if (p.disabled) return;
   if (p.confirm && !window.confirm(p.confirm)) return;
@@ -383,7 +392,13 @@ function renderControls() {
         { class: 'c-row' },
         h('span', { class: 'c-label' }, '총인원'),
         h('button', { class: 'c-btn sq', disabled: busy || st.total <= 1, 'aria-label': '총인원 줄이기', onclick: () => hostCall('setTotal', { total: st.total - 1 }) }, '−'),
-        h('span', { class: 'c-num' }, st.total),
+        h('button', { class: 'c-num', type: 'button', title: '눌러서 직접 입력', 'aria-label': `총인원 ${st.total}명, 눌러서 바꾸기`, disabled: busy, onclick: () => {
+          const v = window.prompt('총인원을 입력하세요', String(st.total));
+          if (v === null) return;
+          const n = Number(v.trim());
+          if (!Number.isInteger(n) || n < 1 || n > 500) return setMsg('총인원은 1~500 사이 숫자로 입력해 주세요.');
+          hostCall('setTotal', { total: n });
+        } }, st.total),
         h('button', { class: 'c-btn sq', disabled: busy || st.total >= 500, 'aria-label': '총인원 늘리기', onclick: () => hostCall('setTotal', { total: st.total + 1 }) }, '+'),
         toggles,
         h('button', { class: 'c-btn', disabled: busy, onclick: reset }, '초기화'),
@@ -409,6 +424,7 @@ document.addEventListener('keydown', (e) => {
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   if (!token) return;
+  if (e.repeat) return; // 키를 누르고 있어도 한 번만
   if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
     e.preventDefault();
     document.activeElement?.blur?.();
@@ -426,7 +442,7 @@ if (token) {
 }
 renderControls();
 
-subscribe((st) => {
+const live = subscribe((st) => {
   lastState = st;
   render(st);
   renderControls();

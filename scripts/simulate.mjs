@@ -10,7 +10,7 @@ import { AXES, computeHints, computeRoster, computeWinners, scoreGuess } from '.
 const URL_ = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_KEY;
 const PASSWORD = process.env.HOST_PASSWORD;
-const PLAYERS = 30;
+const PLAYERS = Number(process.env.PLAYERS || 30);
 if (!URL_ || !KEY || !PASSWORD) {
   console.error('SUPABASE_URL, SUPABASE_KEY, HOST_PASSWORD 환경 변수를 넣어 주세요.');
   process.exit(1);

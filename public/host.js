@@ -44,8 +44,11 @@ async function call(body) {
   render();
 }
 
+let lastNextAt = 0;
 function next() {
   if (!hs || busy) return;
+  if (Date.now() - lastNextAt < 700) return;
+  lastNextAt = Date.now();
   const p = primary(hs);
   if (p.disabled) return;
   if (p.confirm && !window.confirm(p.confirm)) return;
@@ -227,6 +230,7 @@ function start() {
     if (!hs) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.repeat) return;
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
       e.preventDefault();
       next();

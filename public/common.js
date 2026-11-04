@@ -85,6 +85,7 @@ export function subscribe(onState, { withCounts = false, onConnection = () => {}
   let countsV = -1;
   let pollTimer = null;
   let ready = false;
+  let realtimeOk = false;
 
   const emit = () => {
     if (ready) onState({ ...cur });
@@ -135,9 +136,19 @@ export function subscribe(onState, { withCounts = false, onConnection = () => {}
         if (changed) emit();
       },
     )
-    // DB 변경 구독이 실제로 준비되면 그 사이 놓친 변경을 한 번 맞춘다
+    // DB 변경 구독이 실제로 준비되면 그 사이 놓친 변경을 한 번 맞춘다.
+    // 구독이 거절되면(Realtime 설정 문제 등) 3초 조회로 버틴다.
     .on('system', {}, (p) => {
-      if (p.extension === 'postgres_changes' && p.status === 'ok') poll();
+      if (p.extension !== 'postgres_changes') return;
+      if (p.status === 'ok') {
+        realtimeOk = true;
+        stopPolling();
+        poll();
+      } else if (p.status === 'error') {
+        realtimeOk = false;
+        console.error('[realtime]', p.message);
+        startPolling();
+      }
     });
 
   if (cfg.realtime === false) {
@@ -145,17 +156,21 @@ export function subscribe(onState, { withCounts = false, onConnection = () => {}
   } else {
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        stopPolling();
         onConnection(true);
         poll(); // 끊긴 동안 놓친 변경을 맞춘다
+        // DB 변경 구독 준비 신호(system ok)가 오면 조회를 멈춘다. 오지 않으면 조회를 이어간다
+        setTimeout(() => {
+          if (!realtimeOk) startPolling();
+        }, 5000);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        realtimeOk = false;
         onConnection(false);
         startPolling();
       }
     });
     // 연결이 오래 걸리면 그동안은 조회로 버틴다
     setTimeout(() => {
-      if (channel.state !== 'joined') startPolling();
+      if (!realtimeOk) startPolling();
     }, 4000);
   }
   // 혹시 놓친 메시지가 있어도 30초 안에는 맞춰진다
@@ -167,7 +182,16 @@ export function subscribe(onState, { withCounts = false, onConnection = () => {}
   window.addEventListener('online', poll);
 
   poll();
-  return { refresh: poll };
+  return {
+    refresh: poll,
+    /** 진행자 조작 응답처럼 이미 받은 최신 상태를 실시간 메시지를 기다리지 않고 바로 반영 */
+    apply(data) {
+      const changed = applyState(data);
+      if (withCounts) applyCounts(data);
+      ready = true;
+      if (changed || withCounts) emit();
+    },
+  };
 }
 
 /** localStorage는 막혀 있을 수 있으므로 항상 감싸서 쓴다 */

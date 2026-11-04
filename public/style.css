@@ -1230,3 +1230,11 @@ a.p-btn {
   margin: 0;
   min-height: 1.2em;
 }
+
+button.c-num {
+  border: 2px dashed var(--muted);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 8px 10px;
+}

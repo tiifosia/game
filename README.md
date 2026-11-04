@@ -67,7 +67,7 @@ scripts/simulate.mjs  가상 플레이어 30명 전체 흐름 검증 (실제 Rea
 1. 노트북을 프로젝터에 연결하고 화면을 **미러링(복제)** 합니다.
 2. `screen/` 을 열고 전체 화면(F11, 맥은 `Ctrl+Cmd+F`)으로 만듭니다.
 3. 오른쪽 아래 **진행자 로그인** 을 눌러 비밀번호를 넣으면, 화면 아래에 조작 바가 생깁니다. (한 번 로그인하면 이 브라우저에서는 기억합니다.)
-4. 조작 바에서 **총인원** 을 실제 인원으로 맞춥니다(− / +).
+4. 조작 바에서 **총인원** 을 실제 인원으로 맞춥니다. 가운데 숫자를 누르면 바로 입력할 수 있고, − / + 로 하나씩 바꿀 수도 있습니다.
 5. 오른쪽 보라색 버튼(또는 → / Space / PageDown, 발표용 리모컨 가능)으로 진행합니다.
 6. 조작 바를 화면에서 치우고 싶으면 **숨기기** 또는 `H` 키. 숨겨도 키보드·리모컨으로 계속 진행할 수 있고, `H` 를 다시 누르면 나타납니다.
 
@@ -103,6 +103,15 @@ scripts/simulate.mjs  가상 플레이어 30명 전체 흐름 검증 (실제 Rea
 - 영역이 동점이면 그 글자는 X이고, 무엇을 골라도 정답입니다.
 - 네 글자 정답자가 없으면 세 글자 정답자를 발표합니다.
 
+## 배포 후 자동 점검
+
+`main`에 올라가면 GitHub Actions가 배포한 뒤 **verify** 단계에서 다음을 확인합니다(데이터는 바꾸지 않음).
+- 실제 Supabase 프로젝트의 게임 함수가 모두 정상 응답하는지, `mbti_live`가 Realtime에 등록됐는지, 진행자 비밀번호가 설정됐는지
+- 휴대폰과 같은 방식으로 Realtime 구독이 준비되는지
+- 배포된 페이지(`screen/`, `me/`, `guess/` 등)가 모두 열리는지
+
+verify가 빨간색이면 Actions 로그의 `FAIL` 줄에 원인과 할 일이 적혀 있습니다. `schema.sql`이 바뀐 뒤에는 SQL Editor에서 다시 한 번 실행해야 합니다.
+
 ## 개발과 테스트
 
 ```bash
@@ -122,6 +131,6 @@ SUPABASE_URL=https://xxxx.supabase.co SUPABASE_KEY=<publishable key> npm run ser
 ```bash
 SUPABASE_URL=https://xxxx.supabase.co SUPABASE_KEY=<publishable key> HOST_PASSWORD=<진행자 비밀번호> npm run simulate
 ```
-가상 플레이어 30명 + 스크린 1대가 실제 Realtime에 연결해 처음부터 끝까지 검증합니다. **게임 데이터를 초기화**하므로 수업 중에는 실행하지 마세요. 리허설 때 한 번 돌려 보고, 끝나면 그대로 대기 상태가 됩니다.
+가상 플레이어 30명 + 스크린 1대가 실제 Realtime에 연결해 처음부터 끝까지 검증합니다. 인원은 `PLAYERS=20` 처럼 바꿀 수 있습니다. **게임 데이터를 초기화**하므로 수업 중에는 실행하지 마세요. 리허설 때 한 번 돌려 보고, 끝나면 그대로 대기 상태가 됩니다.
 
 외부 라이브러리 `public/vendor/qrcode.js`(qrcode-generator, MIT)와 `public/vendor/supabase.js`(@supabase/supabase-js 2.118.0 UMD, MIT)는 파일로 포함되어 있습니다.

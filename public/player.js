@@ -82,10 +82,10 @@ function top() {
   return h('div', { class: 'p-top' }, h('span', {}, '우리 반 ', h('b', {}, 'MBTI'), ' 추리'), h('span', { class: 'p-chip' }, PHASE_CHIP[state.phase] || ''));
 }
 
-function slots(letters, marks) {
+function slots(letters, marks, id) {
   return h(
     'div',
-    { class: 'p-preview' },
+    { class: 'p-preview', id },
     letters.map((l, i) => {
       const mark = marks ? marks[i] : null;
       const cls = mark === true ? ' ok' : mark === false ? ' no' : l ? ' filled' : '';
@@ -109,10 +109,12 @@ function axisPicker(draft) {
             type: 'button',
             class: 'p-opt',
             'aria-pressed': draft.letters[i] === letter ? 'true' : 'false',
+            'data-axis': i,
+            'data-letter': letter,
             onclick: () => {
               draft.letters[i] = letter;
               ui.error = '';
-              render(true);
+              refreshPicker(draft);
             },
           },
           h('span', { class: 'l' }, letter),
@@ -121,6 +123,26 @@ function axisPicker(draft) {
       ),
     ),
   );
+}
+
+/**
+ * 글자 버튼을 누르면 이름 칸은 그대로 두고 버튼 표시만 바꾼다.
+ * (화면 전체를 다시 그리면 한글 입력 중인 마지막 글자가 사라질 수 있다)
+ */
+function refreshPicker(draft) {
+  document.querySelectorAll('.p-opt[data-axis]').forEach((b) => {
+    b.setAttribute('aria-pressed', draft.letters[Number(b.dataset.axis)] === b.dataset.letter ? 'true' : 'false');
+  });
+  const box = document.getElementById('slots');
+  if (box) box.replaceWith(slots(draft.letters, null, 'slots'));
+  document.querySelector('.p-error')?.remove();
+  updateSubmit();
+}
+
+/** 이름 칸의 현재 값을 초안에 반영 (한글 조합이 끝나지 않았어도 보이는 글자 그대로) */
+function syncName(draft) {
+  const el = document.getElementById(state?.phase === 'predict' ? 'pname' : 'name');
+  if (el) draft.name = el.value;
 }
 
 function nameField(draft, id) {
@@ -136,6 +158,10 @@ function nameField(draft, id) {
     placeholder: '예: 홍길동',
     value: draft.name,
     oninput: (e) => {
+      draft.name = e.target.value;
+      updateSubmit();
+    },
+    oncompositionend: (e) => {
       draft.name = e.target.value;
       updateSubmit();
     },
@@ -169,6 +195,7 @@ function updateSubmit() {
 
 async function submitEntry() {
   const d = ui.entryDraft;
+  syncName(d);
   if (!draftValid(d) || ui.busy) return;
   ui.busy = true;
   ui.error = '';
@@ -201,7 +228,7 @@ function entryForm() {
       h('li', {}, '이름과 MBTI는 게임 마지막에 스크린에 공개됩니다.'),
       h('li', {}, '마감 전에는 같은 이름으로 다시 제출하면 수정됩니다.'),
     ),
-    slots(d.letters),
+    slots(d.letters, null, 'slots'),
     h('button', { id: 'submit', class: 'p-btn', type: 'button', disabled: true, onclick: submitEntry }, ui.busy ? '제출 중…' : editing ? '수정해서 제출하기' : '제출하기'),
     errorBox(),
     device.entries.length
@@ -350,7 +377,7 @@ function predictForm() {
       h('li', {}, '예측은 한 사람당 한 번만, 제출 후에는 수정할 수 없어요.'),
       h('li', {}, '정답자의 이름은 스크린에 공개됩니다.'),
     ),
-    slots(d.letters),
+    slots(d.letters, null, 'slots'),
     confirmBox ||
       h(
         'button',
@@ -360,6 +387,8 @@ function predictForm() {
           type: 'button',
           disabled: true,
           onclick: () => {
+            syncName(d);
+            if (!draftValid(d)) return;
             ui.confirm = { kind: 'submit' };
             ui.error = '';
             render(true);

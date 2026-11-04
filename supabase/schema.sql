@@ -536,6 +536,18 @@ begin
 end;
 $$;
 
+-- 설정 점검용 (배포 후 자동 점검이 부른다). 비밀 정보는 담지 않는다
+create or replace function public.mbti_health() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'ok', true,
+    'realtime', exists (select 1 from pg_publication_tables
+                        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'mbti_live'),
+    'password', exists (select 1 from public.mbti_secret),
+    'liveRows', (select count(*) from public.mbti_live)
+  );
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 5. 함수 실행 권한: 접속자(anon)는 아래 RPC만
 -- ---------------------------------------------------------------------------
@@ -561,6 +573,7 @@ do $$ begin
     grant execute on function public.mbti_mine(jsonb) to anon, authenticated;
     grant execute on function public.mbti_host_state(text) to anon, authenticated;
     grant execute on function public.mbti_host_action(text, text, integer) to anon, authenticated;
+    grant execute on function public.mbti_health() to anon, authenticated;
   end if;
 end $$;
 
