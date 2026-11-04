@@ -55,6 +55,12 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Check Supabase functions
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node scripts/check-supabase.mjs
       - name: Check deployed pages
         env:
           SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/

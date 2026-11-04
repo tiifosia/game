@@ -58,10 +58,16 @@ const NETWORK_ERROR = { ok: false, code: 'network', message: '연결이 불안�
 export async function rpc(fn, args = {}) {
   try {
     const { data, error } = await getClient().rpc(fn, args);
-    if (error || !data) return { ...NETWORK_ERROR, detail: error?.message };
+    if (error || !data) {
+      // 원인을 알 수 있게 서버가 준 오류를 짧게 덧붙인다
+      const why = error ? [error.code, error.message].filter(Boolean).join(' ') : '빈 응답';
+      console.error(`[rpc ${fn}]`, error);
+      return { ...NETWORK_ERROR, message: `${NETWORK_ERROR.message} (${why.slice(0, 120)})` };
+    }
     return { ok: true, ...data };
-  } catch {
-    return NETWORK_ERROR;
+  } catch (err) {
+    console.error(`[rpc ${fn}]`, err);
+    return { ...NETWORK_ERROR, message: `${NETWORK_ERROR.message} (${String(err?.message || err).slice(0, 120)})` };
   }
 }
 
